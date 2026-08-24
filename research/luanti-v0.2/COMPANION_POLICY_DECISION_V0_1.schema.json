@@ -5,6 +5,8 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "schema_version",
+    "decision_id",
     "proposal_id",
     "decision",
     "reason_code",
@@ -12,25 +14,68 @@
     "execution_authorized"
   ],
   "properties": {
-    "proposal_id": {"type": "string"},
+    "schema_version": {
+      "const": "0.1"
+    },
+    "decision_id": {
+      "type": "string",
+      "pattern": "^decision\\.[A-Za-z0-9._-]+$"
+    },
+    "proposal_id": {
+      "type": "string",
+      "pattern": "^proposal\\.[A-Za-z0-9._-]+$"
+    },
     "decision": {
       "type": "string",
       "enum": ["ALLOW", "DENY", "HOLD"]
     },
-    "reason_code": {"type": "string"},
-    "authority_checked": {"const": true},
-    "execution_authorized": {"type": "boolean"},
-    "executor_contract": {"type": ["string", "null"]},
-    "receipt_ref": {"type": ["string", "null"]}
+    "reason_code": {
+      "type": "string",
+      "pattern": "^[A-Z0-9_]+$",
+      "minLength": 1
+    },
+    "authority_checked": {
+      "const": true
+    },
+    "execution_authorized": {
+      "type": "boolean"
+    },
+    "executor_contract": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "decision_receipt_ref": {
+      "type": ["string", "null"],
+      "pattern": "^receipt\\.[A-Za-z0-9._-]+$"
+    }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {"decision": {"const": "ALLOW"}},
+        "required": ["decision"]
+      },
+      "then": {
+        "required": ["executor_contract"],
+        "properties": {
+          "execution_authorized": {"const": true},
+          "executor_contract": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {"decision": {"enum": ["DENY", "HOLD"]}},
         "required": ["decision"]
       },
       "then": {
-        "properties": {"execution_authorized": {"const": false}}
+        "properties": {
+          "execution_authorized": {"const": false},
+          "executor_contract": {"type": "null"}
+        }
       }
     }
   ]
