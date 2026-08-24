@@ -1,6 +1,13 @@
+import json
 import unittest
 
-from transparent_instruments import Abacus, Bead, Scale, SlideRuler
+from transparent_instruments import (
+    SCHEMA_VERSION,
+    Abacus,
+    Bead,
+    Scale,
+    SlideRuler,
+)
 
 
 class ScaleTests(unittest.TestCase):
@@ -38,6 +45,21 @@ class ScaleTests(unittest.TestCase):
     def test_unrepresentable_integer_rejected(self):
         with self.assertRaises(ValueError):
             Scale(0, 10**10_000)
+        with self.assertRaises(ValueError):
+            Scale(0, 2**53 + 1)
+
+    def test_exact_integer_inputs_are_canonicalized_to_float(self):
+        scale = Scale(0, 100)
+        self.assertIs(type(scale.minimum), float)
+        self.assertIs(type(scale.maximum), float)
+        self.assertEqual(scale.minimum, 0.0)
+        self.assertEqual(scale.maximum, 100.0)
+
+    def test_scale_metadata_must_be_text(self):
+        with self.assertRaises(ValueError):
+            Scale(0, 1, unit=object())
+        with self.assertRaises(ValueError):
+            Scale(0, 1, label=object())
 
     def test_extreme_finite_scale_normalizes_without_overflow(self):
         scale = Scale(-1e308, 1e308)
@@ -74,6 +96,35 @@ class AbacusTests(unittest.TestCase):
             "2026-08-23T19:00:01-07:00",
         )
 
+    def test_bead_value_is_canonical_float(self):
+        self.assertIs(type(self.clarity.value), float)
+        self.assertEqual(self.clarity.value, 80.0)
+
+    def test_optional_note_must_be_text(self):
+        with self.assertRaises(ValueError):
+            Bead(
+                "b.bad.note",
+                "clarity",
+                80,
+                self.scale,
+                "basis",
+                "source",
+                "observed",
+                note=object(),
+            )
+
+    def test_bead_requires_declared_scale(self):
+        with self.assertRaises(ValueError):
+            Bead(
+                "b.bad.scale",
+                "clarity",
+                80,
+                object(),
+                "basis",
+                "source",
+                "observed",
+            )
+
     def test_append_and_last_appended(self):
         abacus = Abacus([self.clarity])
         self.assertEqual(abacus.last_appended("clarity"), self.clarity)
@@ -109,6 +160,10 @@ class AbacusTests(unittest.TestCase):
         abacus = Abacus([self.clarity])
         with self.assertRaises(ValueError):
             abacus.add(self.clarity)
+
+    def test_non_bead_append_rejected(self):
+        with self.assertRaises(ValueError):
+            Abacus().add({"bead_id": "not-a-bead"})
 
     def test_no_implicit_weighting(self):
         abacus = Abacus([self.clarity])
@@ -171,10 +226,16 @@ class AbacusTests(unittest.TestCase):
                 "2026-08-23T19:00:00-07:00",
             )
 
-    def test_snapshot_declares_no_authority(self):
+    def test_snapshot_declares_schema_and_no_authority(self):
         snapshot = Abacus([self.clarity]).snapshot()
+        self.assertEqual(snapshot["schema_version"], SCHEMA_VERSION)
         self.assertEqual(snapshot["authority"], "NONE")
         self.assertEqual(snapshot["bead_count"], 1)
+
+    def test_snapshot_is_strict_json_serializable(self):
+        snapshot = Abacus([self.clarity]).snapshot()
+        encoded = json.dumps(snapshot, allow_nan=False, sort_keys=True)
+        self.assertIn(SCHEMA_VERSION, encoded)
 
 
 class SlideRulerTests(unittest.TestCase):
@@ -228,6 +289,31 @@ class SlideRulerTests(unittest.TestCase):
                 justification="comparison",
             )
 
+    def test_alignment_receipt_is_self_reproducible(self):
+        result = SlideRuler.align(
+            self.left,
+            self.right,
+            relation="same-run declared comparison",
+            justification="recompute positions from receipt",
+        )
+        receipt = result.to_dict()
+        self.assertEqual(receipt["schema_version"], SCHEMA_VERSION)
+        left_scale = Scale(**receipt["left_scale"])
+        right_scale = Scale(**receipt["right_scale"])
+        self.assertEqual(
+            left_scale.position(receipt["left_value"]),
+            receipt["left_position"],
+        )
+        self.assertEqual(
+            right_scale.position(receipt["right_value"]),
+            receipt["right_position"],
+        )
+        self.assertEqual(
+            receipt["left_position"] - receipt["right_position"],
+            receipt["position_delta"],
+        )
+        json.dumps(receipt, allow_nan=False, sort_keys=True)
+
     def test_projection_has_no_predictive_claim(self):
         result = SlideRuler.project(
             80,
@@ -239,6 +325,28 @@ class SlideRulerTests(unittest.TestCase):
         self.assertAlmostEqual(result.projected_value, 4)
         self.assertFalse(result.semantic_equivalence_established)
         self.assertFalse(result.predictive_claim)
+
+    def test_projection_receipt_is_self_reproducible(self):
+        result = SlideRuler.project(
+            80,
+            from_scale=Scale(0, 100, "%"),
+            to_scale=Scale(0, 5, "band"),
+            relation="explicit normalized-position alignment",
+            justification="recompute projection from receipt",
+        )
+        receipt = result.to_dict()
+        self.assertEqual(receipt["schema_version"], SCHEMA_VERSION)
+        from_scale = Scale(**receipt["from_scale"])
+        to_scale = Scale(**receipt["to_scale"])
+        self.assertEqual(
+            from_scale.position(receipt["source_value"]),
+            receipt["source_position"],
+        )
+        self.assertEqual(
+            to_scale.value_at(receipt["source_position"]),
+            receipt["projected_value"],
+        )
+        json.dumps(receipt, allow_nan=False, sort_keys=True)
 
 
 if __name__ == "__main__":
