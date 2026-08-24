@@ -58,10 +58,36 @@ class AbacusTests(unittest.TestCase):
             "2026-08-23T19:00:01-07:00",
         )
 
-    def test_append_and_latest(self):
+    def test_append_and_last_appended(self):
         abacus = Abacus([self.clarity])
-        self.assertEqual(abacus.latest("clarity"), self.clarity)
-        self.assertIsNone(abacus.latest("unknown"))
+        self.assertEqual(abacus.last_appended("clarity"), self.clarity)
+        self.assertIsNone(abacus.last_appended("unknown"))
+
+    def test_append_order_does_not_claim_observed_time_currentness(self):
+        newer = Bead(
+            "b.clarity.newer",
+            "clarity",
+            90,
+            self.scale,
+            "newer observation appended first",
+            "fixture-A",
+            "2026-08-23T20:00:00-07:00",
+        )
+        backfilled_older = Bead(
+            "b.clarity.older",
+            "clarity",
+            40,
+            self.scale,
+            "older observation appended later",
+            "fixture-A",
+            "2026-08-23T18:00:00-07:00",
+        )
+        abacus = Abacus([newer, backfilled_older])
+        self.assertEqual(abacus.last_appended("clarity"), backfilled_older)
+        snapshot = abacus.snapshot()
+        self.assertEqual(snapshot["position_selection"], "LAST_APPENDED_PER_DIMENSION")
+        self.assertEqual(snapshot["observed_at_ordering"], "NOT_INTERPRETED")
+        self.assertAlmostEqual(snapshot["last_appended_positions"]["clarity"], 0.4)
 
     def test_duplicate_bead_id_rejected(self):
         abacus = Abacus([self.clarity])
