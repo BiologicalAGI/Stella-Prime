@@ -5,58 +5,90 @@ Date: 2026-08-23
 ## Current classification
 
 ```text
-LOCAL_REFERENCE_CANDIDATE=PASS
-PUBLIC_GITHUB_BLOB_EXECUTION=NOT_YET_PROVEN_ON_REMOTE_RUNNER
+GITHUB_PR_MERGE_CANDIDATE_CI=PASS
+UNIT_TESTS_PER_MATRIX_JOB=41
+RANDOMIZED_INVARIANT_CHECKS_PER_MATRIX_JOB=45000
+GITHUB_HOSTED_UBUNTU=PASS
+GITHUB_HOSTED_WINDOWS=PASS
+GITHUB_HOSTED_MACOS=PASS
+PYTHON_3_12=PASS
+PYTHON_3_13=PASS
+IBUYPOWER_CURRENT_HOST=NOT_YET_TESTED
 CANONICAL_MERGE=NO
 AUTHORITY=NONE
 ```
 
 The reference implementation has been repeatedly attacked, corrected, and rerun rather than treating the first green result as final truth.
 
-## Current locally executed candidate
+## Current GitHub-hosted execution evidence
 
-Environment:
+Workflow:
 
 ```text
-PYTHON=3.13.5
-OS=Linux 6.18.35 x86_64
-EXTERNAL_PYTHON_DEPENDENCIES=NONE
-UNIT_TESTS=38
-PASS=38
-FAIL=0
-ERROR=0
+.github/workflows/transparent-instruments-ci.yml
+permissions.contents=read
+external_python_dependencies=none
 ```
 
-Deterministic randomized invariant run:
+Observed pull-request workflow run:
 
 ```text
+RUN_ID=32686643871
+PR=BiologicalAGI/Stella-Prime#2
+PR_HEAD_AT_RUN=b67cf503f23cc47e50eccbde430ec8645bc864de
+PR_MERGE_COMMIT_AT_RUN=7466b9951887519563b11a1dd8462853c185d6e0
+```
+
+All six matrix jobs completed successfully:
+
+```text
+ubuntu-latest / Python 3.12   PASS
+ubuntu-latest / Python 3.13   PASS
+windows-latest / Python 3.12  PASS
+windows-latest / Python 3.13  PASS
+macos-latest / Python 3.12    PASS
+macos-latest / Python 3.13    PASS
+```
+
+A completed Ubuntu/Python 3.13 job log records CPython 3.13.15 on Ubuntu 24.04 and:
+
+```text
+UNIT_TESTS=41
+PASS=41
+FAIL=0
+ERROR=0
+
 SEED=20260823
 ROUNDTRIP_CHECKS=10000
 EXTREME_SCALE_CHECKS=10000
+NARROW_SCALE_CHECKS=10000
 PROJECTION_CHECKS=5000
 WEIGHTED_CHECKS=5000
 ALIGNMENT_CHECKS=5000
-TOTAL_RANDOMIZED_INVARIANT_CHECKS=35000
+TOTAL_RANDOMIZED_INVARIANT_CHECKS=45000
 RESULT=PASS
 ```
 
-The current GitHub branch contains the same intended contracts, including:
+The `pull_request` event checked GitHub's synthetic merge candidate, not merely an unmerged branch checkout. This is integration evidence for the PR against the recorded base. It is not evidence about the iBUYPOWER's current machine state.
+
+Current code/test/randomized blob identities for the tested head before documentation-only reconciliation:
+
+```text
+transparent_instruments.py = e73ece6ead78fbfc8e6a7adf48e0a0a918c0ae97
+test_transparent_instruments.py = 5817ea499df8b20ce9d83b4cfa924053148431cd
+randomized_invariants.py = 037b46a4d58e76b591f7a3343ffeb8d9d873b2db
+```
+
+Documentation commits after that run do not alter those three blobs. The workflow is configured to rerun when contribution documentation changes, so a later successful run should be treated as the newest CI currentness receipt.
+
+## Explicit contracts
 
 ```text
 SCHEMA_VERSION=transparent-instruments/0.1
 SCALE_MODEL=LINEAR_MIN_MAX
 WEIGHTED_AGGREGATION_MODEL=COMPENSATORY_WEIGHTED_MEAN
+STORAGE_CONTRACT=PUBLIC_API_APPEND_ONLY_NOT_TAMPER_PROOF
 ```
-
-Current public code/test/randomized Git blob identities at this checkpoint:
-
-```text
-transparent_instruments.py = 259c1bcb3f08005778884953407cd6d4afbb0006
-test_transparent_instruments.py = 181b47a9f4637aeb312145833b34c41db90be8fc
-randomized_invariants.py = 7cc7be093db27193d23a04904e44ac7ed0db39d1
-```
-
-Important currentness boundary: the repository has no GitHub Actions run for the exact current PR head. The 38/38 + 35,000 PASS is therefore local reference-candidate execution evidence; it is not represented as remote exact-head CI evidence.
 
 ## Evidence history
 
@@ -98,11 +130,11 @@ V0.1 does not parse or compare observation timestamps.
 The prior normalization expression could overflow on valid finite endpoints such as `[-1e308,+1e308]`. Very large finite weights could also overflow a direct sum.
 
 Correction:
-- scale-relative normalization before differencing;
-- convex interpolation rather than full-range subtraction;
+- overflow-aware normalization;
+- convex interpolation;
 - max-weight rescaling before `math.fsum`;
-- rejection of integer values that cannot be represented exactly in the reference float arithmetic;
-- 10,000 randomized extreme-finite scale cases.
+- rejection of integers that cannot be represented exactly in the reference float arithmetic;
+- randomized extreme-finite scale cases.
 
 ### Finding 4 — receipt integrity was only guaranteed on the intended constructor path
 
@@ -112,7 +144,7 @@ Correction:
 - derived positions/delta/projected value are computed properties;
 - semantic-equivalence/predictive flags are fixed derived non-claims;
 - derived fields cannot be injected through constructors;
-- receipts include the raw values/scales necessary to recompute their results;
+- receipts include raw values/scales necessary to recompute results;
 - records carry `schema_version`;
 - strict JSON serialization is tested with `allow_nan=False`.
 
@@ -129,52 +161,70 @@ SCALE_MODEL = LINEAR_MIN_MAX
 WEIGHTED_AGGREGATION_MODEL = COMPENSATORY_WEIGHTED_MEAN
 ```
 
-- unsupported scale models are rejected rather than silently treated as linear;
-- `explicit_weighted_receipt()` preserves sorted dimensions, selected bead IDs, positions, canonical weights, aggregation model, result, selection rule, schema version, and `authority=NONE`;
-- caller weight-map insertion order cannot change receipt ordering;
-- the original numeric convenience method remains available and returns the receipt value.
+- unsupported scale models are rejected;
+- weighted receipts preserve deterministic dimensions, selected observations, weights, model, result, schema version, and `authority=NONE`.
 
-### Finding 6 — duplicated derived non-claim literals
+### Finding 6 — overflow protection caused narrow-interval precision loss
 
-A later Copilot review correctly observed that `Alignment.to_dict()` and `Projection.to_dict()` hard-coded false literals already represented by derived properties. That duplication could permit future property/serialization drift.
+Using scale-relative arithmetic for every range protected extreme intervals but degraded precision for tightly packed same-sign intervals.
+
+Concrete reproduced counterexample:
+
+```text
+minimum=-1.000000000000013e-10
+maximum=-1e-10
+value=-1.0000000000000007e-10
+expected_relative_position=0.95
+prior_observed_position≈0.9568965517241379
+```
 
 Correction:
-- Alignment serialization now reads `self.semantic_equivalence_established`;
-- Projection serialization now reads `self.semantic_equivalence_established` and `self.predictive_claim`;
-- the derived properties remain the single source of truth.
+- use direct subtraction when `maximum - minimum` is finite;
+- use scale-relative arithmetic only when interval-width subtraction overflows;
+- use `math.fsum` for convex interpolation;
+- add the exact regression;
+- add 10,000 narrow ULP-scale randomized checks against a 120-digit `Decimal.from_float` reference.
 
-## Independent GitHub Copilot review history
+### Finding 7 — append-only and weighted provenance claims were too broad
 
-### Review 1
-A manually requested GitHub Copilot code review reviewed all seven changed files and returned a COMMENTED review recommending approval with two concrete improvement comments:
+Python private attributes are not a tamper-proof storage boundary. Also, weighted receipts preserved IDs/positions/weights but not the full selected observation receipts.
 
-1. canonicalize validated Scale endpoints into stored floats;
-2. avoid rescanning all beads for each requested weighted dimension.
+Correction:
 
-Both were fixed, replied to, and resolved.
+```text
+STORAGE_CONTRACT=PUBLIC_API_APPEND_ONLY_NOT_TAMPER_PROOF
+```
 
-### Review 2
-A later Copilot review returned `Changes recommended` with three comments:
+- public API append-only is distinguished from process-memory tamper resistance;
+- weighted receipts now include full selected bead receipts with basis/source/scale/value;
+- randomized weighted checks assert identity/position consistency between selected bead receipts and summary fields.
 
-1. Alignment serialization duplicated a derived non-claim literal;
-2. Projection serialization duplicated two derived non-claim literals;
-3. the then-current PR description contained stale validation counts.
+## Independent GitHub Copilot reviews
 
-All three were corrected/reconciled, replied to, and resolved. The current PR description reports 38/38 tests and 35,000 invariant checks with the remote-CI limitation stated separately.
+Copilot review is advisory evidence only. COMMENTED reviews are not approval or merge authority.
 
-Copilot review is advisory evidence only. It is not approval authority and does not replace execution tests.
+Observed review cycles included:
 
-## What the 38-test contract covers
+1. **Approval recommended** — canonicalize Scale endpoint storage and avoid repeated bead scans. Both corrected and review threads resolved.
+2. **Changes recommended** — duplicated derived receipt literals and stale validation metadata. Reconciled and resolved.
+3. **Approval recommended** — remaining comments limited to execution ergonomics around running scripts from repository root rather than the documented contribution working directory.
+4. **Approval recommended** on the eight-file head including CI — one suppressed wording nit noted that `explicit_weighted_position()` is specifically a normalized weighted position, not a generic raw-scale number.
 
-The current candidate test contract covers:
-- ordinary and extreme scale normalization/interpolation;
+Copilot's positive recommendation is not used as a substitute for executable evidence.
+
+## What the 41-test contract covers
+
+The current tested contract includes:
+- ordinary, extreme, and narrow scale normalization/interpolation;
 - invalid/out-of-range/non-finite/unrepresentable numeric inputs;
-- canonical float storage and text-only metadata boundaries;
-- explicit `LINEAR_MIN_MAX` scale semantics and rejection of unsupported models;
+- canonical float storage and text metadata boundaries;
+- explicit `LINEAR_MIN_MAX` semantics and rejection of unsupported models;
 - append-order semantics and backfill/currentness separation;
 - duplicate/non-Bead rejection;
+- public-API append-only storage-boundary declaration;
 - explicit-only weighting, missing dimensions, non-finite weights, extreme finite weights;
-- reproducible weighted receipts with `COMPENSATORY_WEIGHTED_MEAN` and deterministic dimension ordering;
+- deterministic compensatory weighted receipts;
+- full selected-bead provenance in weighted receipts;
 - schema version and `authority=NONE` declarations;
 - strict JSON serialization;
 - relative alignment and projection non-claim semantics;
@@ -183,14 +233,15 @@ The current candidate test contract covers:
 
 ## What this evidence supports
 
-`PASS_LOCAL_REFERENCE_CANDIDATE_V0_1_EXPLICIT_MODEL_AND_RECEIPT_HARDENED`
+`PASS_GITHUB_HOSTED_CROSS_PLATFORM_REFERENCE_CANDIDATE_V0_1`
 
-Meaning: the locally executed candidate behaved according to 38 unit tests plus 35,000 deterministic randomized invariant checks in the recorded environment, and the public branch encodes the same explicit scale/aggregation contracts.
+Meaning: the recorded PR merge candidate passed 41 unit tests plus 45,000 deterministic invariant checks on GitHub-hosted Ubuntu, Windows, and macOS under Python 3.12 and 3.13.
 
 ## What this evidence does not support
 
 It does not establish:
-- exact-current-head GitHub CI execution;
+- the current iBUYPOWER host state;
+- every Windows/macOS/Linux distribution or Python implementation;
 - scientific validity of arbitrary dimensions;
 - validity of a confidence estimate;
 - correctness of human-supplied evidence;
@@ -199,20 +250,19 @@ It does not establish:
 - causal inference;
 - predictive performance;
 - permission or authority;
-- Windows/macOS runtime compatibility;
-- cross-language agreement;
 - production readiness;
-- security of a larger system embedding these objects.
+- tamper-proof persistence;
+- cross-language agreement;
+- legal permission to reuse the code while the repository license remains unresolved.
 
-## Failure-seeking next tests
+## Remaining failure-seeking work
 
 Useful next work should continue trying to falsify assumptions rather than add features:
 - persistence/deserialize/re-serialize round-trip under an explicit loader contract;
 - deterministic sequence identity if append order must survive external storage;
 - maliciously large provenance payload/resource-limit policy;
-- exact-current-head execution on another environment;
 - cross-language implementation agreement;
 - human-factor testing for whether normalized position is misread as probability or truth;
-- Windows validation on the intended local host.
+- iBUYPOWER validation on the intended local host.
 
 Until performed, these remain `NOT_PROVEN`.
