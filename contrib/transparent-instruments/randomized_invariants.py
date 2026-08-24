@@ -7,9 +7,22 @@ from transparent_instruments import Abacus, Bead, Scale, SlideRuler
 SEED = 20260823
 
 
+def _random_finite_float() -> float:
+    """Generate a finite float spanning subnormal through near-max exponents."""
+    exponent = random.randint(-1074, 1023)
+    mantissa = max(random.random(), 2**-53)
+    value = math.ldexp(mantissa, exponent)
+    if not math.isfinite(value):
+        value = math.nextafter(math.inf, 0.0)
+    if random.random() < 0.5:
+        value = -value
+    return value
+
+
 def main() -> None:
     random.seed(SEED)
     roundtrip_checks = 0
+    extreme_scale_checks = 0
     projection_checks = 0
     weighted_checks = 0
     alignment_checks = 0
@@ -42,6 +55,25 @@ def main() -> None:
         ):
             raise AssertionError("scale round-trip exceeded tolerance")
         roundtrip_checks += 1
+
+    for _ in range(10_000):
+        left = _random_finite_float()
+        right = _random_finite_float()
+        if left == right:
+            continue
+        lo, hi = sorted((left, right))
+        scale = Scale(lo, hi)
+        position = random.random()
+        value = scale.value_at(position)
+        recovered_position = scale.position(value)
+
+        if not math.isfinite(value):
+            raise AssertionError("extreme scale interpolation became non-finite")
+        if not math.isfinite(recovered_position):
+            raise AssertionError("extreme normalized position became non-finite")
+        if not 0.0 <= recovered_position <= 1.0:
+            raise AssertionError("extreme normalized position escaped [0, 1]")
+        extreme_scale_checks += 1
 
     for _ in range(5_000):
         lo_from = random.uniform(-1e6, 1e6)
@@ -83,11 +115,14 @@ def main() -> None:
                     observed_at=f"run-{run_index}.{dimension_index}",
                 )
             )
-            weights[dimension] = random.uniform(0.000001, 100)
+            # Exercise a wide finite dynamic range without allowing infinity.
+            weights[dimension] = 10.0 ** random.uniform(-300, 308)
 
         result = abacus.explicit_weighted_position(weights)
         if not 0.0 <= result <= 1.0:
             raise AssertionError("weighted position escaped [0, 1]")
+        if not math.isfinite(result):
+            raise AssertionError("weighted position became non-finite")
         weighted_checks += 1
 
     for run_index in range(5_000):
@@ -133,12 +168,14 @@ def main() -> None:
 
     total = (
         roundtrip_checks
+        + extreme_scale_checks
         + projection_checks
         + weighted_checks
         + alignment_checks
     )
     print(f"SEED={SEED}")
     print(f"ROUNDTRIP_CHECKS={roundtrip_checks}")
+    print(f"EXTREME_SCALE_CHECKS={extreme_scale_checks}")
     print(f"PROJECTION_CHECKS={projection_checks}")
     print(f"WEIGHTED_CHECKS={weighted_checks}")
     print(f"ALIGNMENT_CHECKS={alignment_checks}")
