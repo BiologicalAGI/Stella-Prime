@@ -309,7 +309,7 @@ class Abacus:
         }
 
     def explicit_weighted_position(self, weights: Mapping[str, float]) -> float:
-        """Return the numeric value from an explicit weighted receipt."""
+        """Return the normalized compensatory weighted position in [0, 1]."""
         return float(self.explicit_weighted_receipt(weights)["value"])
 
     def snapshot(self) -> Dict[str, object]:
