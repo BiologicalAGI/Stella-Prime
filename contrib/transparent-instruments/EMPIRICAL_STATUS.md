@@ -5,8 +5,8 @@ Date: 2026-08-23
 ## Current classification
 
 ```text
-FINAL_HEAD=89ac4338c93d55abfa540797a2f711fb1b8f89ac
-FINAL_HEAD_CI_RUN=32686974348
+TESTED_SOURCE_HEAD=89ac4338c93d55abfa540797a2f711fb1b8f89ac
+TESTED_SOURCE_HEAD_CI_RUN=32686974348
 GITHUB_PR_MERGE_CANDIDATE_CI=PASS
 UNIT_TESTS_PER_MATRIX_JOB=41
 RANDOMIZED_INVARIANT_CHECKS_PER_MATRIX_JOB=45000
@@ -20,6 +20,8 @@ CANONICAL_MERGE=NO
 AUTHORITY=NONE
 ```
 
+`TESTED_SOURCE_HEAD` identifies the source-bearing head whose implementation semantics are evidenced here. This file does not attempt to encode its own containing branch commit as a timeless "current head"; live PR metadata owns that currentness question.
+
 The reference implementation has been repeatedly attacked, corrected, and rerun rather than treating the first green result as final truth.
 
 ## Current GitHub-hosted execution evidence
@@ -32,7 +34,7 @@ permissions.contents=read
 external_python_dependencies=none
 ```
 
-Final-head pull-request workflow run:
+Tested-source-head pull-request workflow run:
 
 ```text
 RUN_ID=32686974348
@@ -59,7 +61,7 @@ python -m unittest -v test_transparent_instruments.py
 python randomized_invariants.py
 ```
 
-A prior completed GitHub-hosted run of the same 41-test/45,000-check contract logged the exact counts explicitly:
+A completed GitHub-hosted run of the same 41-test/45,000-check contract logged the exact counts explicitly:
 
 ```text
 UNIT_TESTS=41
@@ -78,11 +80,11 @@ TOTAL_RANDOMIZED_INVARIANT_CHECKS=45000
 RESULT=PASS
 ```
 
-The final-head run completed successfully across the same six-job matrix. Pull-request workflow execution checks GitHub's PR merge candidate, so this is integration evidence against the recorded base, not merely an isolated local sandbox result.
+The tested-source-head run completed successfully across the same six-job matrix. Pull-request workflow execution checks GitHub's PR merge candidate, so this is integration evidence against the recorded base, not merely an isolated local sandbox result.
 
 This is still not evidence about the current iBUYPOWER machine state.
 
-Current final source/test/randomized blob identities:
+Current tested source/test/randomized blob identities:
 
 ```text
 transparent_instruments.py = ff3f222a5502fc4e10f5bd521d8ca70baaeda2ed
@@ -244,7 +246,7 @@ The tested contract includes:
 
 `PASS_GITHUB_HOSTED_CROSS_PLATFORM_REFERENCE_CANDIDATE_V0_1`
 
-Meaning: the final recorded PR head completed the six-job GitHub-hosted CI matrix successfully, with the tested contract comprising 41 unit tests and 45,000 deterministic invariant checks on Ubuntu, Windows, and macOS under Python 3.12 and 3.13.
+Meaning: the tested source head completed the six-job GitHub-hosted CI matrix successfully, with the tested contract comprising 41 unit tests and 45,000 deterministic invariant checks on Ubuntu, Windows, and macOS under Python 3.12 and 3.13.
 
 ## What this evidence does not support
 
