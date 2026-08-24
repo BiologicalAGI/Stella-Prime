@@ -18,6 +18,23 @@ class ScaleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             scale.position(11)
 
+    def test_non_finite_scale_rejected(self):
+        with self.assertRaises(ValueError):
+            Scale(0, float("nan"))
+        with self.assertRaises(ValueError):
+            Scale(0, float("inf"))
+
+    def test_non_finite_value_rejected(self):
+        scale = Scale(0, 10)
+        with self.assertRaises(ValueError):
+            scale.position(float("nan"))
+        with self.assertRaises(ValueError):
+            scale.position(float("inf"))
+
+    def test_boolean_numeric_values_rejected(self):
+        with self.assertRaises(ValueError):
+            Scale(False, 1)
+
 
 class AbacusTests(unittest.TestCase):
     def setUp(self):
@@ -68,6 +85,25 @@ class AbacusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             abacus.explicit_weighted_position({"clarity": 1, "safety": 1})
 
+    def test_non_finite_weight_rejected(self):
+        abacus = Abacus([self.clarity])
+        with self.assertRaises(ValueError):
+            abacus.explicit_weighted_position({"clarity": float("nan")})
+        with self.assertRaises(ValueError):
+            abacus.explicit_weighted_position({"clarity": float("inf")})
+
+    def test_non_string_bead_identity_rejected(self):
+        with self.assertRaises(ValueError):
+            Bead(
+                123,
+                "clarity",
+                80,
+                self.scale,
+                "observed test result",
+                "fixture-A",
+                "2026-08-23T19:00:00-07:00",
+            )
+
     def test_snapshot_declares_no_authority(self):
         snapshot = Abacus([self.clarity]).snapshot()
         self.assertEqual(snapshot["authority"], "NONE")
@@ -113,6 +149,15 @@ class SlideRulerTests(unittest.TestCase):
                 self.left,
                 self.right,
                 relation="",
+                justification="comparison",
+            )
+
+    def test_relation_must_be_text(self):
+        with self.assertRaises(ValueError):
+            SlideRuler.align(
+                self.left,
+                self.right,
+                relation=None,
                 justification="comparison",
             )
 
