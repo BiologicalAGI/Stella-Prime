@@ -376,7 +376,7 @@ class Alignment:
             "position_delta": self.position_delta,
             "relation": self.relation,
             "justification": self.justification,
-            "semantic_equivalence_established": False,
+            "semantic_equivalence_established": self.semantic_equivalence_established,
         }
 
 
@@ -430,8 +430,8 @@ class Projection:
             "to_scale": asdict(self.to_scale),
             "relation": self.relation,
             "justification": self.justification,
-            "semantic_equivalence_established": False,
-            "predictive_claim": False,
+            "semantic_equivalence_established": self.semantic_equivalence_established,
+            "predictive_claim": self.predictive_claim,
         }
 
 
