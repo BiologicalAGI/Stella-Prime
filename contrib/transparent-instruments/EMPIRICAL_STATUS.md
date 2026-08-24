@@ -2,23 +2,32 @@
 
 Date: 2026-08-23
 
-## Current validation
+## Current classification
+
+```text
+LOCAL_REFERENCE_CANDIDATE=PASS
+PUBLIC_GITHUB_BLOB_EXECUTION=NOT_YET_PROVEN_ON_REMOTE_RUNNER
+CANONICAL_MERGE=NO
+AUTHORITY=NONE
+```
 
 The reference implementation has been repeatedly attacked, corrected, and rerun rather than treating the first green result as final truth.
 
-Current environment observed:
+## Current locally executed candidate
+
+Environment:
 
 ```text
 PYTHON=3.13.5
 OS=Linux 6.18.35 x86_64
 EXTERNAL_PYTHON_DEPENDENCIES=NONE
-UNIT_TESTS=34
-PASS=34
+UNIT_TESTS=38
+PASS=38
 FAIL=0
 ERROR=0
 ```
 
-Current deterministic randomized invariant run:
+Deterministic randomized invariant run:
 
 ```text
 SEED=20260823
@@ -31,15 +40,23 @@ TOTAL_RANDOMIZED_INVARIANT_CHECKS=35000
 RESULT=PASS
 ```
 
-Current public Git blob identities for the executed implementation/test/randomized artifacts:
+The current GitHub branch contains the same intended contracts, including:
 
 ```text
-transparent_instruments.py = eebb37f8451846c75da734cd5379c1510eede3ae
-test_transparent_instruments.py = ea34f03f2aaf629ec5d5db6be34a431b325f21da
+SCHEMA_VERSION=transparent-instruments/0.1
+SCALE_MODEL=LINEAR_MIN_MAX
+WEIGHTED_AGGREGATION_MODEL=COMPENSATORY_WEIGHTED_MEAN
+```
+
+Current public code/test/randomized Git blob identities at this checkpoint:
+
+```text
+transparent_instruments.py = da487116cd43933c7e2c374a3df762d1c6b970ef
+test_transparent_instruments.py = 181b47a9f4637aeb312145833b34c41db90be8fc
 randomized_invariants.py = 7cc7be093db27193d23a04904e44ac7ed0db39d1
 ```
 
-The exact test blob differs from the pre-upload local draft only by blank-line formatting; its exact Git blob identity was reconstructed and the exact content passed 34/34 tests.
+Important currentness boundary: the repository has no GitHub Actions run for the exact current PR head. The 38/38 + 35,000 PASS is therefore local reference-candidate execution evidence; it is not represented as remote exact-head CI evidence.
 
 ## Evidence history
 
@@ -54,17 +71,16 @@ Superseded by later failure-seeking evidence.
 
 ### Finding 1 — non-finite numeric contamination
 
-Ordinary comparisons do not reliably reject `NaN`. Non-finite scale values, observations, or weights could contaminate normalized/aggregate output.
+NaN/infinity could bypass ordinary comparisons and contaminate normalized/aggregate output.
 
 Correction:
-
-- reject NaN and infinities;
-- reject booleans as numeric measurements;
-- require non-empty required provenance/relation text.
+- explicit finite numeric validation;
+- booleans rejected as numeric measurements;
+- required provenance/relation fields validated as text.
 
 ### Finding 2 — append order could masquerade as temporal currentness
 
-The earlier API name `latest()` selected the last **appended** bead while every bead also carries `observed_at` text. A backfilled older observation appended later therefore exposed an unsupported currentness implication.
+The earlier `latest()` name selected the last appended bead while every bead also carries `observed_at` text.
 
 Correction:
 
@@ -75,99 +91,87 @@ position_selection = LAST_APPENDED_PER_DIMENSION
 observed_at_ordering = NOT_INTERPRETED
 ```
 
-V0.1 preserves `observed_at` as provenance text and does not parse or compare timestamps.
+V0.1 does not parse or compare observation timestamps.
 
 ### Finding 3 — finite inputs could still overflow intermediate arithmetic
 
-The prior normalization formula used:
-
-```text
-(value - minimum) / (maximum - minimum)
-```
-
-For the valid finite scale `[-1e308, +1e308]`, `maximum - minimum` overflows. Direct reproduction showed:
-
-```text
-position(0.0)      -> 0.0   # should be 0.5
-position(1e308)    -> NaN
-value_at(0.5)      -> inf
-```
-
-Likewise, two valid weights of `1e308` could overflow the weight sum and produce a wrong aggregate.
+The prior normalization expression could overflow on valid finite endpoints such as `[-1e308,+1e308]`. Very large finite weights could also overflow a direct sum.
 
 Correction:
-
-- scale normalization now divides endpoints/value by a common finite magnitude before differencing;
-- interpolation uses a convex combination instead of subtracting the full range;
-- explicit weighting rescales all weights by the maximum weight before `math.fsum` aggregation;
-- integers that cannot be represented exactly as float are rejected rather than silently rounded;
-- randomized coverage now includes 10,000 extreme finite scales spanning subnormal through near-maximum exponents and weights spanning approximately `1e-300` through `1e308`.
+- scale-relative normalization before differencing;
+- convex interpolation rather than full-range subtraction;
+- max-weight rescaling before `math.fsum`;
+- rejection of integer values that cannot be represented exactly in the reference float arithmetic;
+- 10,000 randomized extreme-finite scale cases.
 
 ### Finding 4 — receipt integrity was only guaranteed on the intended constructor path
 
-Earlier `Alignment` and `Projection` dataclasses exposed derived fields directly. A caller could instantiate a receipt with an arbitrary projected value/delta and could even set non-claim flags such as `predictive_claim=True` before serialization.
+Earlier Alignment/Projection objects exposed derived fields directly. A caller could manufacture conflicting derived values or claim flags before serialization.
+
+Correction:
+- derived positions/delta/projected value are computed properties;
+- semantic-equivalence/predictive flags are fixed derived non-claims;
+- derived fields cannot be injected through constructors;
+- receipts include the raw values/scales necessary to recompute their results;
+- records carry `schema_version`;
+- strict JSON serialization is tested with `allow_nan=False`.
+
+### Finding 5 — hidden linearity and aggregation assumptions
+
+`Scale` mathematically implemented linear min-max normalization but did not make that model explicit enough. A caller could misread it as a generic ordinal/logarithmic scale.
+
+Likewise, a bare weighted float did not itself preserve which observations and weights produced it.
 
 Correction:
 
-- Alignment positions/delta are derived properties;
-- Projection source position/projected value are derived properties;
-- semantic-equivalence and predictive-claim flags are fixed derived false properties;
-- derived fields cannot be injected through constructors;
-- receipts include the declared scales/values necessary to recompute their numeric result;
-- strict JSON serialization is tested with `allow_nan=False`;
-- records expose `schema_version = transparent-instruments/0.1`;
-- validated numeric inputs are stored canonically as finite floats;
-- optional scale metadata and notes are required to be text.
+```text
+SCALE_MODEL = LINEAR_MIN_MAX
+WEIGHTED_AGGREGATION_MODEL = COMPENSATORY_WEIGHTED_MEAN
+```
 
-### Independent GitHub Copilot review
+- unsupported scale models are rejected rather than silently treated as linear;
+- `explicit_weighted_receipt()` preserves sorted dimensions, selected bead IDs, positions, canonical weights, aggregation model, result, selection rule, schema version, and `authority=NONE`;
+- caller weight-map insertion order cannot change receipt ordering;
+- the original numeric convenience method remains available and returns the receipt value.
 
-A manually requested GitHub Copilot code review on PR #2 reviewed all seven changed files and returned a COMMENTED review recommending approval with two improvement comments.
+## Independent GitHub Copilot review
 
-The comments identified:
+A manually requested GitHub Copilot code review on an earlier head reviewed all seven changed files and returned a COMMENTED review recommending approval with two concrete improvement comments:
 
-1. validated Scale endpoints should be canonicalized into stored floats;
-2. weighted lookup should avoid rescanning all beads once per requested dimension.
+1. canonicalize validated Scale endpoints into stored floats;
+2. avoid rescanning all beads for each requested weighted dimension.
 
-Both were addressed on later commits. Copilot's review is advisory only and is not treated as approval or merge authority.
+Both were addressed, replied to, and the review threads were resolved. The weighted implementation now resolves last-appended beads once before dimension lookup.
 
-## Current unit-test coverage
+Copilot review is advisory evidence only. It is not an approval authority and does not replace execution tests. A fresh review should be requested only after the current head is stable.
 
-The 34-test suite now covers:
+## What the 38-test contract covers
 
+The current candidate test contract covers:
 - ordinary and extreme scale normalization/interpolation;
 - invalid/out-of-range/non-finite/unrepresentable numeric inputs;
 - canonical float storage and text-only metadata boundaries;
+- explicit `LINEAR_MIN_MAX` scale semantics and rejection of unsupported models;
 - append-order semantics and backfill/currentness separation;
 - duplicate/non-Bead rejection;
-- explicit-only weighting, missing dimensions, non-finite weights, and extreme finite weights;
-- schema version and `authority = NONE` snapshot declarations;
-- strict JSON snapshot serialization;
+- explicit-only weighting, missing dimensions, non-finite weights, extreme finite weights;
+- reproducible weighted receipts with `COMPENSATORY_WEIGHTED_MEAN` and deterministic dimension ordering;
+- schema version and `authority=NONE` declarations;
+- strict JSON serialization;
 - relative alignment and projection non-claim semantics;
 - self-reproducible Alignment and Projection receipts;
 - prevention of caller injection of derived receipt fields/claims.
 
-## Randomized invariant coverage
-
-The fixed-seed run checks:
-
-- 10,000 ordinary scale round trips;
-- 10,000 extreme finite scale interpolation/normalization cases;
-- 5,000 Slide Ruler projections;
-- 5,000 weighted Abacus runs over a very wide finite weight range;
-- 5,000 Alignment delta checks.
-
-This is implementation-invariant evidence, not validation of any real-world metric or interpretation.
-
 ## What this evidence supports
 
-`PASS_REFERENCE_BEHAVIOR_V0_1_RECEIPT_HARDENED`
+`PASS_LOCAL_REFERENCE_CANDIDATE_V0_1_EXPLICIT_MODEL_AND_RECEIPT_HARDENED`
 
-Meaning: the current public implementation behaves according to 34 executable unit tests and 35,000 deterministic randomized invariant checks in the recorded environment, including explicit extreme-range arithmetic and receipt-integrity regressions.
+Meaning: the locally executed candidate behaved according to 38 unit tests plus 35,000 deterministic randomized invariant checks in the recorded environment, and the public branch now encodes the same explicit scale/aggregation contracts.
 
 ## What this evidence does not support
 
 It does not establish:
-
+- exact-current-head GitHub CI execution;
 - scientific validity of arbitrary dimensions;
 - validity of a confidence estimate;
 - correctness of human-supplied evidence;
@@ -183,11 +187,11 @@ It does not establish:
 
 ## Failure-seeking next tests
 
-Useful next work should continue trying to falsify assumptions rather than adding features:
-
+Useful next work should continue trying to falsify assumptions rather than add features:
 - persistence/deserialize/re-serialize round-trip under an explicit loader contract;
 - deterministic sequence identity if append order must survive external storage;
 - maliciously large provenance payload/resource-limit policy;
+- exact-current-head execution on another environment;
 - cross-language implementation agreement;
 - human-factor testing for whether normalized position is misread as probability or truth;
 - Windows validation on the intended local host.
