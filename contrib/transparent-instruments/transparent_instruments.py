@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass
 import math
 from typing import Dict, Iterable, Mapping, Optional, Tuple
 
+SCHEMA_VERSION = "transparent-instruments/0.1"
+
 
 def _require_finite_number(value: object, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -28,12 +30,22 @@ def _require_finite_number(value: object, field_name: str) -> float:
         raise ValueError(f"{field_name} must be representable as a finite float") from exc
     if not math.isfinite(numeric):
         raise ValueError(f"{field_name} must be finite")
+    if isinstance(value, int) and int(numeric) != value:
+        raise ValueError(
+            f"{field_name} integer must be exactly representable as a float"
+        )
     return numeric
 
 
 def _require_nonempty_text(value: object, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _require_text(value: object, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
     return value
 
 
@@ -56,20 +68,22 @@ class Scale:
         maximum = _require_finite_number(self.maximum, "scale maximum")
         if maximum <= minimum:
             raise ValueError("scale maximum must be greater than minimum")
+        _require_text(self.unit, "scale unit")
+        _require_text(self.label, "scale label")
+        object.__setattr__(self, "minimum", minimum)
+        object.__setattr__(self, "maximum", maximum)
 
     def position(self, value: float) -> float:
         """Return a normalized position in [0, 1] without range-overflow."""
         numeric = _require_finite_number(value, "value")
-        minimum = _require_finite_number(self.minimum, "scale minimum")
-        maximum = _require_finite_number(self.maximum, "scale maximum")
+        minimum = self.minimum
+        maximum = self.maximum
         if numeric < minimum or numeric > maximum:
             raise ValueError(
                 f"value {value!r} is outside declared scale "
                 f"[{self.minimum!r}, {self.maximum!r}]"
             )
 
-        # Scaling first avoids overflow in (maximum - minimum), e.g.
-        # [-1e308, +1e308], while preserving relative placement.
         magnitude = max(abs(minimum), abs(maximum))
         minimum_scaled = minimum / magnitude
         maximum_scaled = maximum / magnitude
@@ -80,25 +94,21 @@ class Scale:
         )
         if not math.isfinite(position):
             raise ArithmeticError("normalized position became non-finite")
-        # Input bounds were validated above; clamp only floating-point noise.
         return min(1.0, max(0.0, position))
 
     def value_at(self, position: float) -> float:
-        """Return the raw value at a normalized position in [0, 1].
-
-        Uses a convex combination rather than minimum + p*(maximum-minimum)
-        so opposite-sign finite endpoints cannot overflow during subtraction.
-        """
+        """Return the raw value at a normalized position in [0, 1]."""
         normalized = _require_finite_number(position, "position")
         if normalized < 0.0 or normalized > 1.0:
             raise ValueError("position must be within [0, 1]")
-        minimum = _require_finite_number(self.minimum, "scale minimum")
-        maximum = _require_finite_number(self.maximum, "scale maximum")
         if normalized == 0.0:
-            return minimum
+            return self.minimum
         if normalized == 1.0:
-            return maximum
-        value = (1.0 - normalized) * minimum + normalized * maximum
+            return self.maximum
+        value = (
+            (1.0 - normalized) * self.minimum
+            + normalized * self.maximum
+        )
         if not math.isfinite(value):
             raise ArithmeticError("scale interpolation became non-finite")
         return value
@@ -120,7 +130,12 @@ class Bead:
     def __post_init__(self) -> None:
         for field_name in ("bead_id", "dimension", "basis", "source", "observed_at"):
             _require_nonempty_text(getattr(self, field_name), field_name)
-        self.scale.position(self.value)
+        _require_text(self.note, "note")
+        if not isinstance(self.scale, Scale):
+            raise ValueError("scale must be a Scale")
+        numeric_value = _require_finite_number(self.value, "value")
+        self.scale.position(numeric_value)
+        object.__setattr__(self, "value", numeric_value)
 
     @property
     def position(self) -> float:
@@ -128,6 +143,7 @@ class Bead:
 
     def to_dict(self) -> Dict[str, object]:
         data = asdict(self)
+        data["schema_version"] = SCHEMA_VERSION
         data["position"] = self.position
         return data
 
@@ -146,6 +162,8 @@ class Abacus:
                 self.add(bead)
 
     def add(self, bead: Bead) -> None:
+        if not isinstance(bead, Bead):
+            raise ValueError("abacus accepts Bead instances only")
         if any(existing.bead_id == bead.bead_id for existing in self._beads):
             raise ValueError(f"duplicate bead_id: {bead.bead_id}")
         self._beads.append(bead)
@@ -160,6 +178,7 @@ class Abacus:
         This is append-order semantics only. ``observed_at`` is preserved as
         provenance text and is not parsed, compared, or used to infer currentness.
         """
+        _require_nonempty_text(dimension, "dimension")
         for bead in reversed(self._beads):
             if bead.dimension == dimension:
                 return bead
@@ -182,6 +201,7 @@ class Abacus:
         if not weights:
             raise ValueError("weights are required; no implicit weighting is allowed")
 
+        positions = self.last_appended_positions()
         resolved: list[tuple[float, float]] = []
         missing: list[str] = []
 
@@ -190,11 +210,10 @@ class Abacus:
             numeric_weight = _require_finite_number(weight, f"weight for {dimension}")
             if numeric_weight < 0:
                 raise ValueError("weights must be non-negative")
-            bead = self.last_appended(dimension)
-            if bead is None:
+            if dimension not in positions:
                 missing.append(dimension)
                 continue
-            resolved.append((bead.position, numeric_weight))
+            resolved.append((positions[dimension], numeric_weight))
 
         if missing:
             raise ValueError("missing dimensions: " + ", ".join(sorted(missing)))
@@ -216,6 +235,7 @@ class Abacus:
 
     def snapshot(self) -> Dict[str, object]:
         return {
+            "schema_version": SCHEMA_VERSION,
             "instrument": "abacus",
             "bead_count": len(self._beads),
             "beads": [bead.to_dict() for bead in self._beads],
@@ -228,10 +248,16 @@ class Abacus:
 
 @dataclass(frozen=True)
 class Alignment:
-    """Relative placement of two observations on their declared scales."""
+    """Reproducible relative placement of two declared observations."""
 
     left_bead_id: str
     right_bead_id: str
+    left_dimension: str
+    right_dimension: str
+    left_value: float
+    right_value: float
+    left_scale: Scale
+    right_scale: Scale
     left_position: float
     right_position: float
     position_delta: float
@@ -240,28 +266,29 @@ class Alignment:
     semantic_equivalence_established: bool = False
 
     def to_dict(self) -> Dict[str, object]:
-        return asdict(self)
+        data = asdict(self)
+        data["schema_version"] = SCHEMA_VERSION
+        return data
 
 
 @dataclass(frozen=True)
 class Projection:
-    """Mathematical same-position projection from one scale to another.
-
-    A projection says only: "if these scales are intentionally aligned by
-    normalized position, this is the value at the same relative position."
-    It does not establish that the scales describe equivalent phenomena.
-    """
+    """Reproducible same-position projection from one scale to another."""
 
     source_value: float
     source_position: float
     projected_value: float
+    from_scale: Scale
+    to_scale: Scale
     relation: str
     justification: str
     semantic_equivalence_established: bool = False
     predictive_claim: bool = False
 
     def to_dict(self) -> Dict[str, object]:
-        return asdict(self)
+        data = asdict(self)
+        data["schema_version"] = SCHEMA_VERSION
+        return data
 
 
 class SlideRuler:
@@ -275,6 +302,8 @@ class SlideRuler:
         relation: str,
         justification: str,
     ) -> Alignment:
+        if not isinstance(left, Bead) or not isinstance(right, Bead):
+            raise ValueError("align requires Bead instances")
         _require_nonempty_text(relation, "relation")
         _require_nonempty_text(justification, "justification")
 
@@ -283,6 +312,12 @@ class SlideRuler:
         return Alignment(
             left_bead_id=left.bead_id,
             right_bead_id=right.bead_id,
+            left_dimension=left.dimension,
+            right_dimension=right.dimension,
+            left_value=left.value,
+            right_value=right.value,
+            left_scale=left.scale,
+            right_scale=right.scale,
             left_position=left_position,
             right_position=right_position,
             position_delta=left_position - right_position,
@@ -299,14 +334,19 @@ class SlideRuler:
         relation: str,
         justification: str,
     ) -> Projection:
+        if not isinstance(from_scale, Scale) or not isinstance(to_scale, Scale):
+            raise ValueError("project requires Scale instances")
         _require_nonempty_text(relation, "relation")
         _require_nonempty_text(justification, "justification")
 
-        position = from_scale.position(value)
+        source_value = _require_finite_number(value, "value")
+        position = from_scale.position(source_value)
         return Projection(
-            source_value=value,
+            source_value=source_value,
             source_position=position,
             projected_value=to_scale.value_at(position),
+            from_scale=from_scale,
+            to_scale=to_scale,
             relation=relation,
             justification=justification,
         )
