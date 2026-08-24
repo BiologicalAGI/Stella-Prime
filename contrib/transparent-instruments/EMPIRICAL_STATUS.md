@@ -5,6 +5,8 @@ Date: 2026-08-23
 ## Current classification
 
 ```text
+FINAL_HEAD=89ac4338c93d55abfa540797a2f711fb1b8f89ac
+FINAL_HEAD_CI_RUN=32686974348
 GITHUB_PR_MERGE_CANDIDATE_CI=PASS
 UNIT_TESTS_PER_MATRIX_JOB=41
 RANDOMIZED_INVARIANT_CHECKS_PER_MATRIX_JOB=45000
@@ -30,13 +32,13 @@ permissions.contents=read
 external_python_dependencies=none
 ```
 
-Observed pull-request workflow run:
+Final-head pull-request workflow run:
 
 ```text
-RUN_ID=32686643871
+RUN_ID=32686974348
 PR=BiologicalAGI/Stella-Prime#2
-PR_HEAD_AT_RUN=b67cf503f23cc47e50eccbde430ec8645bc864de
-PR_MERGE_COMMIT_AT_RUN=7466b9951887519563b11a1dd8462853c185d6e0
+PR_HEAD_AT_RUN=89ac4338c93d55abfa540797a2f711fb1b8f89ac
+RESULT=SUCCESS
 ```
 
 All six matrix jobs completed successfully:
@@ -50,7 +52,14 @@ macos-latest / Python 3.12    PASS
 macos-latest / Python 3.13    PASS
 ```
 
-A completed Ubuntu/Python 3.13 job log records CPython 3.13.15 on Ubuntu 24.04 and:
+The tested command contract is:
+
+```text
+python -m unittest -v test_transparent_instruments.py
+python randomized_invariants.py
+```
+
+A prior completed GitHub-hosted run of the same 41-test/45,000-check contract logged the exact counts explicitly:
 
 ```text
 UNIT_TESTS=41
@@ -69,17 +78,17 @@ TOTAL_RANDOMIZED_INVARIANT_CHECKS=45000
 RESULT=PASS
 ```
 
-The `pull_request` event checked GitHub's synthetic merge candidate, not merely an unmerged branch checkout. This is integration evidence for the PR against the recorded base. It is not evidence about the iBUYPOWER's current machine state.
+The final-head run completed successfully across the same six-job matrix. Pull-request workflow execution checks GitHub's PR merge candidate, so this is integration evidence against the recorded base, not merely an isolated local sandbox result.
 
-Current code/test/randomized blob identities for the tested head before documentation-only reconciliation:
+This is still not evidence about the current iBUYPOWER machine state.
+
+Current final source/test/randomized blob identities:
 
 ```text
-transparent_instruments.py = e73ece6ead78fbfc8e6a7adf48e0a0a918c0ae97
+transparent_instruments.py = ff3f222a5502fc4e10f5bd521d8ca70baaeda2ed
 test_transparent_instruments.py = 5817ea499df8b20ce9d83b4cfa924053148431cd
 randomized_invariants.py = 037b46a4d58e76b591f7a3343ffeb8d9d873b2db
 ```
-
-Documentation commits after that run do not alter those three blobs. The workflow is configured to rerun when contribution documentation changes, so a later successful run should be treated as the newest CI currentness receipt.
 
 ## Explicit contracts
 
@@ -196,7 +205,7 @@ STORAGE_CONTRACT=PUBLIC_API_APPEND_ONLY_NOT_TAMPER_PROOF
 ```
 
 - public API append-only is distinguished from process-memory tamper resistance;
-- weighted receipts now include full selected bead receipts with basis/source/scale/value;
+- weighted receipts include full selected bead receipts with basis/source/scale/value;
 - randomized weighted checks assert identity/position consistency between selected bead receipts and summary fields.
 
 ## Independent GitHub Copilot reviews
@@ -208,13 +217,13 @@ Observed review cycles included:
 1. **Approval recommended** — canonicalize Scale endpoint storage and avoid repeated bead scans. Both corrected and review threads resolved.
 2. **Changes recommended** — duplicated derived receipt literals and stale validation metadata. Reconciled and resolved.
 3. **Approval recommended** — remaining comments limited to execution ergonomics around running scripts from repository root rather than the documented contribution working directory.
-4. **Approval recommended** on the eight-file head including CI — one suppressed wording nit noted that `explicit_weighted_position()` is specifically a normalized weighted position, not a generic raw-scale number.
+4. **Approval recommended** on the eight-file head including CI — a wording nit noted that `explicit_weighted_position()` is specifically a normalized weighted position rather than a generic raw-scale number. The method docstring and example were clarified accordingly.
 
 Copilot's positive recommendation is not used as a substitute for executable evidence.
 
 ## What the 41-test contract covers
 
-The current tested contract includes:
+The tested contract includes:
 - ordinary, extreme, and narrow scale normalization/interpolation;
 - invalid/out-of-range/non-finite/unrepresentable numeric inputs;
 - canonical float storage and text metadata boundaries;
@@ -235,7 +244,7 @@ The current tested contract includes:
 
 `PASS_GITHUB_HOSTED_CROSS_PLATFORM_REFERENCE_CANDIDATE_V0_1`
 
-Meaning: the recorded PR merge candidate passed 41 unit tests plus 45,000 deterministic invariant checks on GitHub-hosted Ubuntu, Windows, and macOS under Python 3.12 and 3.13.
+Meaning: the final recorded PR head completed the six-job GitHub-hosted CI matrix successfully, with the tested contract comprising 41 unit tests and 45,000 deterministic invariant checks on Ubuntu, Windows, and macOS under Python 3.12 and 3.13.
 
 ## What this evidence does not support
 
