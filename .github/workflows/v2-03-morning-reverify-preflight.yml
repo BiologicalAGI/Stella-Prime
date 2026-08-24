@@ -37,7 +37,7 @@ jobs:
       - name: Verify exact reviewed card identity
         run: |
           $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
-          $SourceCommit = '9af9c695fafcd9d336de0ee57ba5c4599f2747da'
+          $SourceCommit = '4f53aff96467bcbcdcb6f7dfc049787117ddabf0'
 
           $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'SOURCE_CARD_BLOB_LOOKUP_FAILED' }
@@ -85,6 +85,7 @@ jobs:
 
           $ExpectedCommands = @(
             'Add-Hold',
+            'Add-ReadError',
             'Check-ExactFileHash',
             'Check-HashMatchInRoot',
             'Get-ChildItem',
@@ -125,7 +126,7 @@ jobs:
       - name: Self-test command-surface rejection logic
         run: |
           $Allowed = @(
-            'Add-Hold','Check-ExactFileHash','Check-HashMatchInRoot','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Section','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host'
+            'Add-Hold','Add-ReadError','Check-ExactFileHash','Check-HashMatchInRoot','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Section','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host'
           )
 
           function Test-Rejected([string]$Source) {
@@ -176,22 +177,19 @@ jobs:
             'SCOS_MUTATION=NO',
             'CANONICAL_PROMOTION=NO',
             'V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO',
+            'EXPECTED_COMPUTER=SCOS-HOME',
             'SAFE_TO_CLEAR_TERMINAL=YES'
           )
           foreach ($Needle in $RequiredBoundary) {
             if (-not $Output.Contains($Needle)) { throw ("MISSING_REQUIRED_BOUNDARY_OUTPUT={0}" -f $Needle) }
           }
 
-          $RequiredHostedHolds = @(
-            'HOLD=V0_1_ROOT_MISSING',
-            'HOLD=V0_2_ROOT_MISSING',
-            'HOLD=WORLD_KERNEL_ROOT_MISSING',
-            'HOLD=LUANTI_EXPECTED_EXECUTABLE_HASH_NOT_FOUND'
-          )
-          foreach ($Needle in $RequiredHostedHolds) {
-            if (-not $Output.Contains($Needle)) { throw ("MISSING_EXPECTED_HOSTED_HOLD={0}" -f $Needle) }
+          if (-not $Output.Contains('EXPECTED_COMPUTER_MATCH=NO')) {
+            throw 'HOSTED_RUNNER_UNEXPECTEDLY_MATCHED_LOCAL_HOST_IDENTITY'
           }
-
+          if (-not $Output.Contains('HOLD=UNEXPECTED_HOST')) {
+            throw 'EXPECTED_STABLE_HOST_IDENTITY_HOLD_NOT_OBSERVED'
+          }
           if (-not $Output.Contains('RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) {
             throw 'EXPECTED_HOSTED_HOLD_RESULT_NOT_OBSERVED'
           }
@@ -200,12 +198,13 @@ jobs:
           }
 
           Write-Host 'NEGATIVE_FIXTURE_EXPECTED_HOLD=PASS'
+          Write-Host 'NEGATIVE_FIXTURE_STABLE_REASON=UNEXPECTED_HOST'
           Write-Host 'NOTE=Hosted HOLD validates the instrument only; it is not iBUYPOWER currentness evidence.'
 
       - name: Verify post-execution identity and worktree
         run: |
           $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
-          $SourceCommit = '9af9c695fafcd9d336de0ee57ba5c4599f2747da'
+          $SourceCommit = '4f53aff96467bcbcdcb6f7dfc049787117ddabf0'
           $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
           $PostBlob = (git rev-parse "HEAD:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'POST_CARD_BLOB_LOOKUP_FAILED' }
