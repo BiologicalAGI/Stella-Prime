@@ -4,7 +4,9 @@ import unittest
 from transparent_instruments import (
     SCHEMA_VERSION,
     Abacus,
+    Alignment,
     Bead,
+    Projection,
     Scale,
     SlideRuler,
 )
@@ -314,6 +316,22 @@ class SlideRulerTests(unittest.TestCase):
         )
         json.dumps(receipt, allow_nan=False, sort_keys=True)
 
+    def test_alignment_derived_fields_cannot_be_injected(self):
+        with self.assertRaises(TypeError):
+            Alignment(
+                left_bead_id="b.left",
+                right_bead_id="b.right",
+                left_dimension="clarity",
+                right_dimension="risk",
+                left_value=80,
+                right_value=2,
+                left_scale=Scale(0, 100),
+                right_scale=Scale(0, 5),
+                relation="forgery attempt",
+                justification="derived delta must not be caller supplied",
+                position_delta=999,
+            )
+
     def test_projection_has_no_predictive_claim(self):
         result = SlideRuler.project(
             80,
@@ -325,6 +343,18 @@ class SlideRulerTests(unittest.TestCase):
         self.assertAlmostEqual(result.projected_value, 4)
         self.assertFalse(result.semantic_equivalence_established)
         self.assertFalse(result.predictive_claim)
+
+    def test_projection_derived_claims_cannot_be_injected(self):
+        with self.assertRaises(TypeError):
+            Projection(
+                source_value=80,
+                from_scale=Scale(0, 100),
+                to_scale=Scale(0, 5),
+                relation="forgery attempt",
+                justification="derived claims must not be caller supplied",
+                projected_value=999,
+                predictive_claim=True,
+            )
 
     def test_projection_receipt_is_self_reproducible(self):
         result = SlideRuler.project(
