@@ -38,17 +38,14 @@ jobs:
         run: |
           $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
           $SourceCommit = '5d57cb411bb02502bd7050efdb4d84c031370b2c'
-
           $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'SOURCE_CARD_BLOB_LOOKUP_FAILED' }
           $ActualBlob = (git rev-parse "HEAD:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'HEAD_CARD_BLOB_LOOKUP_FAILED' }
-
           Write-Host ("SOURCE_COMMIT={0}" -f $SourceCommit)
           Write-Host ("EXPECTED_CARD_BLOB_SHA={0}" -f $ExpectedBlob)
           Write-Host ("ACTUAL_CARD_BLOB_SHA={0}" -f $ActualBlob)
           if ($ActualBlob -ne $ExpectedBlob) { throw 'CARD_IDENTITY_DRIFT_FROM_REVIEWED_SOURCE_COMMIT' }
-
           $Status = @(git status --porcelain --untracked-files=all)
           if ($LASTEXITCODE -ne 0) { throw 'PRE_EXECUTION_GIT_STATUS_FAILED' }
           if ($Status.Count -gt 0) {
@@ -73,8 +70,17 @@ jobs:
       - name: Guard regressions observed on the real console
         run: |
           $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
+          $Tokens = $null
+          $Errors = $null
+          $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Card,[ref]$Tokens,[ref]$Errors)
+          if ($Errors.Count -gt 0) { throw 'PARSER_ERRORS_PREVENT_REGRESSION_GUARD' }
+          $VariableAsts = @($Ast.FindAll({param($Node) $Node -is [System.Management.Automation.Language.VariableExpressionAst]},$true))
+          $AutomaticMatchesUses = @($VariableAsts | Where-Object { $_.VariablePath.UserPath -eq 'Matches' })
+          if ($AutomaticMatchesUses.Count -gt 0) {
+            $AutomaticMatchesUses | ForEach-Object { Write-Host ("FORBIDDEN_MATCHES_VARIABLE_EXTENT={0}" -f $_.Extent.Text) }
+            throw 'REGRESSION_AUTOMATIC_MATCHES_VARIABLE_REINTRODUCED'
+          }
           $Text = Get-Content -LiteralPath $Card -Raw
-          if ($Text -match '(?m)\$Matches\b') { throw 'REGRESSION_AUTOMATIC_MATCHES_VARIABLE_REINTRODUCED' }
           if ($Text -match '(?m)ExpectedSize\.Value') { throw 'REGRESSION_NULLABLE_VALUE_ACCESS_REINTRODUCED' }
           if ($Text -match '(?m)^finally\s*\{') { throw 'REGRESSION_INTERACTIVE_FINALLY_BOUNDARY_REINTRODUCED' }
           if (-not $Text.Contains('CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH')) { throw 'R1_REVISION_MARKER_MISSING' }
@@ -87,24 +93,9 @@ jobs:
           $Errors = $null
           $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Card,[ref]$Tokens,[ref]$Errors)
           if ($Errors.Count -gt 0) { throw 'PARSER_ERRORS_PREVENT_COMMAND_SURFACE_CHECK' }
-
           $ExpectedCommands = @(
-            'Add-Hold',
-            'Check-File',
-            'Get-ChildItem',
-            'Get-Content',
-            'Get-Date',
-            'Get-FileHash',
-            'Get-Item',
-            'Get-Process',
-            'Join-Path',
-            'Select-String',
-            'Set-StrictMode',
-            'Test-Path',
-            'Where-Object',
-            'Write-Host'
+            'Add-Hold','Check-File','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host'
           ) | Sort-Object -Unique
-
           $CommandAsts = @($Ast.FindAll({param($Node) $Node -is [System.Management.Automation.Language.CommandAst]},$true))
           $ActualCommands = [System.Collections.Generic.List[string]]::new()
           foreach ($CommandAst in $CommandAsts) {
@@ -115,7 +106,6 @@ jobs:
           $ActualSorted = @($ActualCommands | Sort-Object -Unique)
           Write-Host ('EXPECTED_COMMANDS=' + ($ExpectedCommands -join ','))
           Write-Host ('ACTUAL_COMMANDS=' + ($ActualSorted -join ','))
-
           $Difference = @(Compare-Object -ReferenceObject $ExpectedCommands -DifferenceObject $ActualSorted)
           if ($Difference.Count -gt 0) {
             $Difference | ForEach-Object { Write-Host ("COMMAND_SURFACE_DIFF|SIDE={0}|COMMAND={1}" -f $_.SideIndicator,$_.InputObject) }
@@ -126,7 +116,6 @@ jobs:
       - name: Self-test command-surface rejection logic
         run: |
           $Allowed = @('Add-Hold','Check-File','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host')
-
           function Test-Rejected([string]$Source) {
             $Tokens = $null
             $Errors = $null
@@ -140,7 +129,6 @@ jobs:
             }
             return $false
           }
-
           $Fixtures = [ordered]@{
             SET_CONTENT = 'Set-Content x.txt bad'
             GIT_EXE = 'git.exe status'
@@ -161,14 +149,7 @@ jobs:
           $OutputLines = @(& $Card *>&1 | ForEach-Object { $_.ToString() })
           $OutputLines | ForEach-Object { Write-Host $_ }
           $Output = $OutputLines -join "`n"
-
-          foreach ($Needle in @(
-            'CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH',
-            'MODE=READ_ONLY_V2_03_PRE_MUTATION_REVERIFY',
-            'V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO',
-            'EXPECTED_COMPUTER=SCOS-HOME',
-            'SAFE_TO_CLEAR_TERMINAL=YES'
-          )) {
+          foreach ($Needle in @('CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH','MODE=READ_ONLY_V2_03_PRE_MUTATION_REVERIFY','V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO','EXPECTED_COMPUTER=SCOS-HOME','SAFE_TO_CLEAR_TERMINAL=YES')) {
             if (-not $Output.Contains($Needle)) { throw ("MISSING_REQUIRED_SCRIPT_OUTPUT={0}" -f $Needle) }
           }
           if (-not $Output.Contains('EXPECTED_COMPUTER_MATCH=NO')) { throw 'HOSTED_RUNNER_UNEXPECTEDLY_MATCHED_LOCAL_HOST_IDENTITY' }
@@ -183,15 +164,7 @@ jobs:
           $PasteOutputLines = @(Get-Content -LiteralPath $Card | & pwsh -NoLogo -NoProfile -NonInteractive -Command - *>&1 | ForEach-Object { $_.ToString() })
           $PasteOutputLines | ForEach-Object { Write-Host $_ }
           $PasteOutput = $PasteOutputLines -join "`n"
-
-          foreach ($Needle in @(
-            'CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH',
-            'EXPECTED_COMPUTER_MATCH=NO',
-            'HOLD=UNEXPECTED_HOST',
-            'RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION',
-            'V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO',
-            'SAFE_TO_CLEAR_TERMINAL=YES'
-          )) {
+          foreach ($Needle in @('CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH','EXPECTED_COMPUTER_MATCH=NO','HOLD=UNEXPECTED_HOST','RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION','V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO','SAFE_TO_CLEAR_TERMINAL=YES')) {
             if (-not $PasteOutput.Contains($Needle)) { throw ("MISSING_REQUIRED_PASTE_OUTPUT={0}" -f $Needle) }
           }
           if ($PasteOutput -match "(?i)finally.*not recognized") { throw 'PASTE_MODE_FINALLY_REGRESSION' }
@@ -206,14 +179,12 @@ jobs:
           $PostBlob = (git rev-parse "HEAD:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'POST_CARD_BLOB_LOOKUP_FAILED' }
           if ($PostBlob -ne $ExpectedBlob) { throw 'CARD_IDENTITY_CHANGED_DURING_EXECUTION' }
-
           $Status = @(git status --porcelain --untracked-files=all)
           if ($LASTEXITCODE -ne 0) { throw 'POST_EXECUTION_GIT_STATUS_FAILED' }
           if ($Status.Count -gt 0) {
             $Status | ForEach-Object { Write-Host ("POST_WORKTREE_ENTRY={0}" -f $_) }
             throw 'WORKTREE_CHANGED_DURING_READ_ONLY_VALIDATION'
           }
-
           Write-Host ("POST_CARD_BLOB_SHA={0}" -f $PostBlob)
           Write-Host 'POST_CARD_TREE_IDENTITY=PASS'
           Write-Host 'POST_WORKTREE_CLEAN=PASS'
