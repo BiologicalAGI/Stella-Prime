@@ -1,0 +1,53 @@
+name: Transparent Instruments CI
+
+on:
+  push:
+    branches:
+      - contrib/transparent-instruments-v0-1
+    paths:
+      - "contrib/transparent-instruments/**"
+      - ".github/workflows/transparent-instruments-ci.yml"
+  pull_request:
+    paths:
+      - "contrib/transparent-instruments/**"
+      - ".github/workflows/transparent-instruments-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        python-version:
+          - "3.12"
+          - "3.13"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Show environment
+        working-directory: contrib/transparent-instruments
+        run: python -c "import platform, sys; print(sys.version); print(platform.platform())"
+
+      - name: Run unit tests
+        working-directory: contrib/transparent-instruments
+        run: python -m unittest -v test_transparent_instruments.py
+
+      - name: Run deterministic randomized invariants
+        working-directory: contrib/transparent-instruments
+        run: python randomized_invariants.py
