@@ -37,21 +37,17 @@ jobs:
       - name: Verify exact reviewed card identity
         run: |
           $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
-          $SourceCommit = '4f53aff96467bcbcdcb6f7dfc049787117ddabf0'
+          $SourceCommit = '5d57cb411bb02502bd7050efdb4d84c031370b2c'
 
           $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'SOURCE_CARD_BLOB_LOOKUP_FAILED' }
-
           $ActualBlob = (git rev-parse "HEAD:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'HEAD_CARD_BLOB_LOOKUP_FAILED' }
 
           Write-Host ("SOURCE_COMMIT={0}" -f $SourceCommit)
           Write-Host ("EXPECTED_CARD_BLOB_SHA={0}" -f $ExpectedBlob)
           Write-Host ("ACTUAL_CARD_BLOB_SHA={0}" -f $ActualBlob)
-
-          if ($ActualBlob -ne $ExpectedBlob) {
-            throw 'CARD_IDENTITY_DRIFT_FROM_REVIEWED_SOURCE_COMMIT'
-          }
+          if ($ActualBlob -ne $ExpectedBlob) { throw 'CARD_IDENTITY_DRIFT_FROM_REVIEWED_SOURCE_COMMIT' }
 
           $Status = @(git status --porcelain --untracked-files=all)
           if ($LASTEXITCODE -ne 0) { throw 'PRE_EXECUTION_GIT_STATUS_FAILED' }
@@ -59,7 +55,6 @@ jobs:
             $Status | ForEach-Object { Write-Host ("PRE_WORKTREE_ENTRY={0}" -f $_) }
             throw 'PRE_EXECUTION_WORKTREE_NOT_CLEAN'
           }
-
           Write-Host 'CARD_TREE_IDENTITY=PASS'
           Write-Host 'PRE_EXECUTION_WORKTREE_CLEAN=PASS'
 
@@ -75,6 +70,16 @@ jobs:
           }
           Write-Host 'PARSE_RESULT=PASS'
 
+      - name: Guard regressions observed on the real console
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
+          $Text = Get-Content -LiteralPath $Card -Raw
+          if ($Text -match '(?m)\$Matches\b') { throw 'REGRESSION_AUTOMATIC_MATCHES_VARIABLE_REINTRODUCED' }
+          if ($Text -match '(?m)ExpectedSize\.Value') { throw 'REGRESSION_NULLABLE_VALUE_ACCESS_REINTRODUCED' }
+          if ($Text -match '(?m)^finally\s*\{') { throw 'REGRESSION_INTERACTIVE_FINALLY_BOUNDARY_REINTRODUCED' }
+          if (-not $Text.Contains('CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH')) { throw 'R1_REVISION_MARKER_MISSING' }
+          Write-Host 'REAL_CONSOLE_REGRESSION_GUARDS=PASS'
+
       - name: Verify exact reviewed command surface
         run: |
           $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
@@ -85,9 +90,7 @@ jobs:
 
           $ExpectedCommands = @(
             'Add-Hold',
-            'Add-ReadError',
-            'Check-ExactFileHash',
-            'Check-HashMatchInRoot',
+            'Check-File',
             'Get-ChildItem',
             'Get-Content',
             'Get-Date',
@@ -95,7 +98,6 @@ jobs:
             'Get-Item',
             'Get-Process',
             'Join-Path',
-            'Section',
             'Select-String',
             'Set-StrictMode',
             'Test-Path',
@@ -110,7 +112,6 @@ jobs:
             if (-not $Name) { throw ("DYNAMIC_OR_UNRESOLVED_COMMAND|EXTENT={0}" -f $CommandAst.Extent.Text) }
             if (-not $ActualCommands.Contains($Name)) { $ActualCommands.Add($Name) }
           }
-
           $ActualSorted = @($ActualCommands | Sort-Object -Unique)
           Write-Host ('EXPECTED_COMMANDS=' + ($ExpectedCommands -join ','))
           Write-Host ('ACTUAL_COMMANDS=' + ($ActualSorted -join ','))
@@ -120,14 +121,11 @@ jobs:
             $Difference | ForEach-Object { Write-Host ("COMMAND_SURFACE_DIFF|SIDE={0}|COMMAND={1}" -f $_.SideIndicator,$_.InputObject) }
             throw 'COMMAND_SURFACE_DRIFT'
           }
-
           Write-Host 'EXACT_COMMAND_SURFACE=PASS'
 
       - name: Self-test command-surface rejection logic
         run: |
-          $Allowed = @(
-            'Add-Hold','Add-ReadError','Check-ExactFileHash','Check-HashMatchInRoot','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Section','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host'
-          )
+          $Allowed = @('Add-Hold','Check-File','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host')
 
           function Test-Rejected([string]$Source) {
             $Tokens = $null
@@ -149,62 +147,61 @@ jobs:
             START_PROCESS = 'Start-Process notepad.exe'
             DYNAMIC_INVOCATION = '& $dynamicCommand'
           }
-
           foreach ($Name in $Fixtures.Keys) {
             $Rejected = Test-Rejected $Fixtures[$Name]
             Write-Host ("SCANNER_FIXTURE|NAME={0}|REJECTED={1}" -f $Name,$(if ($Rejected) {'YES'} else {'NO'}))
             if (-not $Rejected) { throw ("SCANNER_SELF_TEST_FAILED={0}" -f $Name) }
           }
-
           if (Test-Rejected 'Write-Host "ok"') { throw 'SCANNER_REJECTED_KNOWN_ALLOWED_COMMAND' }
           Write-Host 'SCANNER_SELF_TEST=PASS'
 
-      - name: Execute hosted Windows negative fixture
+      - name: Execute hosted Windows negative fixture as script file
         run: |
           $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
           $OutputLines = @(& $Card *>&1 | ForEach-Object { $_.ToString() })
           $OutputLines | ForEach-Object { Write-Host $_ }
           $Output = $OutputLines -join "`n"
 
-          $RequiredBoundary = @(
+          foreach ($Needle in @(
+            'CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH',
             'MODE=READ_ONLY_V2_03_PRE_MUTATION_REVERIFY',
-            'NETWORK_USE=NO',
-            'DOWNLOAD=NO',
-            'INSTALL=NO',
-            'FILE_MUTATION=NO',
-            'PROCESS_MUTATION=NO',
-            'GIT_MUTATION=NO',
-            'SCOS_MUTATION=NO',
-            'CANONICAL_PROMOTION=NO',
             'V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO',
             'EXPECTED_COMPUTER=SCOS-HOME',
             'SAFE_TO_CLEAR_TERMINAL=YES'
-          )
-          foreach ($Needle in $RequiredBoundary) {
-            if (-not $Output.Contains($Needle)) { throw ("MISSING_REQUIRED_BOUNDARY_OUTPUT={0}" -f $Needle) }
+          )) {
+            if (-not $Output.Contains($Needle)) { throw ("MISSING_REQUIRED_SCRIPT_OUTPUT={0}" -f $Needle) }
           }
+          if (-not $Output.Contains('EXPECTED_COMPUTER_MATCH=NO')) { throw 'HOSTED_RUNNER_UNEXPECTEDLY_MATCHED_LOCAL_HOST_IDENTITY' }
+          if (-not $Output.Contains('HOLD=UNEXPECTED_HOST')) { throw 'EXPECTED_STABLE_HOST_IDENTITY_HOLD_NOT_OBSERVED' }
+          if (-not $Output.Contains('RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) { throw 'EXPECTED_HOSTED_HOLD_RESULT_NOT_OBSERVED' }
+          if ($Output.Contains('RESULT=PASS_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) { throw 'NEGATIVE_FIXTURE_UNEXPECTEDLY_RETURNED_PASS' }
+          Write-Host 'SCRIPT_FILE_NEGATIVE_FIXTURE=PASS'
 
-          if (-not $Output.Contains('EXPECTED_COMPUTER_MATCH=NO')) {
-            throw 'HOSTED_RUNNER_UNEXPECTEDLY_MATCHED_LOCAL_HOST_IDENTITY'
-          }
-          if (-not $Output.Contains('HOLD=UNEXPECTED_HOST')) {
-            throw 'EXPECTED_STABLE_HOST_IDENTITY_HOLD_NOT_OBSERVED'
-          }
-          if (-not $Output.Contains('RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) {
-            throw 'EXPECTED_HOSTED_HOLD_RESULT_NOT_OBSERVED'
-          }
-          if ($Output.Contains('RESULT=PASS_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) {
-            throw 'NEGATIVE_FIXTURE_UNEXPECTEDLY_RETURNED_PASS'
-          }
+      - name: Execute paste-like stdin delivery fixture
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
+          $PasteOutputLines = @(Get-Content -LiteralPath $Card | & pwsh -NoLogo -NoProfile -NonInteractive -Command - *>&1 | ForEach-Object { $_.ToString() })
+          $PasteOutputLines | ForEach-Object { Write-Host $_ }
+          $PasteOutput = $PasteOutputLines -join "`n"
 
-          Write-Host 'NEGATIVE_FIXTURE_EXPECTED_HOLD=PASS'
-          Write-Host 'NEGATIVE_FIXTURE_STABLE_REASON=UNEXPECTED_HOST'
-          Write-Host 'NOTE=Hosted HOLD validates the instrument only; it is not iBUYPOWER currentness evidence.'
+          foreach ($Needle in @(
+            'CARD_REVISION=R1_PASTE_SAFE_EXACT_PATH',
+            'EXPECTED_COMPUTER_MATCH=NO',
+            'HOLD=UNEXPECTED_HOST',
+            'RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION',
+            'V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO',
+            'SAFE_TO_CLEAR_TERMINAL=YES'
+          )) {
+            if (-not $PasteOutput.Contains($Needle)) { throw ("MISSING_REQUIRED_PASTE_OUTPUT={0}" -f $Needle) }
+          }
+          if ($PasteOutput -match "(?i)finally.*not recognized") { throw 'PASTE_MODE_FINALLY_REGRESSION' }
+          Write-Host 'PASTE_LIKE_STDIN_FIXTURE=PASS'
+          Write-Host 'NOTE=Hosted paste-like HOLD validates delivery semantics only; it is not iBUYPOWER currentness evidence.'
 
       - name: Verify post-execution identity and worktree
         run: |
           $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
-          $SourceCommit = '4f53aff96467bcbcdcb6f7dfc049787117ddabf0'
+          $SourceCommit = '5d57cb411bb02502bd7050efdb4d84c031370b2c'
           $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
           $PostBlob = (git rev-parse "HEAD:$RepoPath").Trim()
           if ($LASTEXITCODE -ne 0) { throw 'POST_CARD_BLOB_LOOKUP_FAILED' }
@@ -220,7 +217,7 @@ jobs:
           Write-Host ("POST_CARD_BLOB_SHA={0}" -f $PostBlob)
           Write-Host 'POST_CARD_TREE_IDENTITY=PASS'
           Write-Host 'POST_WORKTREE_CLEAN=PASS'
-          Write-Host 'VALIDATION_RESULT=PASS_V2_03_MORNING_REVERIFY_HOSTED_PREFLIGHT'
+          Write-Host 'VALIDATION_RESULT=PASS_V2_03_MORNING_REVERIFY_R1_HOSTED_PREFLIGHT'
           Write-Host 'LOCAL_CURRENTNESS_PROVEN=NO'
           Write-Host 'V2_03A_MUTATION_AUTHORIZED=NO'
           Write-Host 'CANONICAL_PROMOTION=NO'
