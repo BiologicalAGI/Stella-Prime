@@ -51,7 +51,7 @@ WEIGHTED_AGGREGATION_MODEL=COMPENSATORY_WEIGHTED_MEAN
 Current public code/test/randomized Git blob identities at this checkpoint:
 
 ```text
-transparent_instruments.py = da487116cd43933c7e2c374a3df762d1c6b970ef
+transparent_instruments.py = 259c1bcb3f08005778884953407cd6d4afbb0006
 test_transparent_instruments.py = 181b47a9f4637aeb312145833b34c41db90be8fc
 randomized_invariants.py = 7cc7be093db27193d23a04904e44ac7ed0db39d1
 ```
@@ -134,16 +134,35 @@ WEIGHTED_AGGREGATION_MODEL = COMPENSATORY_WEIGHTED_MEAN
 - caller weight-map insertion order cannot change receipt ordering;
 - the original numeric convenience method remains available and returns the receipt value.
 
-## Independent GitHub Copilot review
+### Finding 6 — duplicated derived non-claim literals
 
-A manually requested GitHub Copilot code review on an earlier head reviewed all seven changed files and returned a COMMENTED review recommending approval with two concrete improvement comments:
+A later Copilot review correctly observed that `Alignment.to_dict()` and `Projection.to_dict()` hard-coded false literals already represented by derived properties. That duplication could permit future property/serialization drift.
+
+Correction:
+- Alignment serialization now reads `self.semantic_equivalence_established`;
+- Projection serialization now reads `self.semantic_equivalence_established` and `self.predictive_claim`;
+- the derived properties remain the single source of truth.
+
+## Independent GitHub Copilot review history
+
+### Review 1
+A manually requested GitHub Copilot code review reviewed all seven changed files and returned a COMMENTED review recommending approval with two concrete improvement comments:
 
 1. canonicalize validated Scale endpoints into stored floats;
 2. avoid rescanning all beads for each requested weighted dimension.
 
-Both were addressed, replied to, and the review threads were resolved. The weighted implementation now resolves last-appended beads once before dimension lookup.
+Both were fixed, replied to, and resolved.
 
-Copilot review is advisory evidence only. It is not an approval authority and does not replace execution tests. A fresh review should be requested only after the current head is stable.
+### Review 2
+A later Copilot review returned `Changes recommended` with three comments:
+
+1. Alignment serialization duplicated a derived non-claim literal;
+2. Projection serialization duplicated two derived non-claim literals;
+3. the then-current PR description contained stale validation counts.
+
+All three were corrected/reconciled, replied to, and resolved. The current PR description reports 38/38 tests and 35,000 invariant checks with the remote-CI limitation stated separately.
+
+Copilot review is advisory evidence only. It is not approval authority and does not replace execution tests.
 
 ## What the 38-test contract covers
 
@@ -166,7 +185,7 @@ The current candidate test contract covers:
 
 `PASS_LOCAL_REFERENCE_CANDIDATE_V0_1_EXPLICIT_MODEL_AND_RECEIPT_HARDENED`
 
-Meaning: the locally executed candidate behaved according to 38 unit tests plus 35,000 deterministic randomized invariant checks in the recorded environment, and the public branch now encodes the same explicit scale/aggregation contracts.
+Meaning: the locally executed candidate behaved according to 38 unit tests plus 35,000 deterministic randomized invariant checks in the recorded environment, and the public branch encodes the same explicit scale/aggregation contracts.
 
 ## What this evidence does not support
 
