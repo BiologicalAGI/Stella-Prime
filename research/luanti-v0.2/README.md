@@ -31,34 +31,49 @@ Normal play must avoid exact slash commands, coordinates, hidden interaction con
 9. **Licensing is first-class.** Imported media/code requires source, author, license, modification status, purpose, hash where practical, and review status.
 10. **Accessibility/recovery is architectural.** `What do I do next?`, re-entry recap, visible interaction affordances, adjustable guidance, and redundant cues are not optional polish.
 
+## Independent audit status
+
+The initial orchestration pass was independently reviewed after creation. The core architecture survived, but several control artifacts required hardening. See `INDEPENDENT_AUDIT_AND_HARDENING_2026-08-23.md`.
+
+Key corrections:
+
+- V2-00R no longer self-awards final gate PASS; evidence collection and reconciliation are separate.
+- visible Desktop/current paths are discovered rather than inherited as current truth.
+- active Luanti executable/version ambiguity becomes HOLD.
+- companion proposal and policy schemas now reject contradictory or under-bounded actions.
+- redundant orchestration summary files were removed to reduce competing sources of truth.
+
 ## Start here on a future session
 
 1. Read `RECOVERY_CHECKPOINT_V0_1.md`.
 2. Read `AUTHORITY_AND_PROMOTION_LEDGER_V0_1.md`.
 3. Read `CURRENT_POSITION.txt` and `NEXT_GATE_MAP_V0_1.md`.
-4. Read `V0_2_BUILD_CONTRACT_V0_1.md` and `TEST_MATRIX_V0_1.md` for the active proof contract.
-5. If the live user authorizes local read-only reverification, review `V2_00R_ACCEPTANCE.md` and `V2_00R_READ_ONLY_REVERIFY.ps1` before execution.
-6. Do not recover authorization from these files.
+4. Read `INDEPENDENT_AUDIT_AND_HARDENING_2026-08-23.md`.
+5. Read `V0_2_BUILD_CONTRACT_V0_1.md` and `TEST_MATRIX_V0_1.md` for the active proof contract.
+6. If the live user authorizes local read-only evidence collection, review `V2_00R_ACCEPTANCE.md` and `V2_00R_READ_ONLY_REVERIFY.ps1` before execution.
+7. Do not recover authorization from these files.
 
 ## Research / orchestration artifacts
 
 - `V0_2_BUILD_CONTRACT_V0_1.md` — ownership boundaries, invariants, event vocabulary, player states, companion contract, proof ladder, acceptance criteria.
 - `EVIDENCE_LEDGER_2026-08-23.md` — external research evidence and confidence notes.
 - `DECISION_RECORD_2026-08-23.md` — what changed, what survived pressure testing, what remains unresolved.
+- `INDEPENDENT_AUDIT_AND_HARDENING_2026-08-23.md` — adversarial self-audit, defects found, corrections, and remaining limitations.
 - `AUTHORITY_AND_PROMOTION_LEDGER_V0_1.md` — evidence/capability/currentness/authorization/execution/promotion separation.
 - `TEST_MATRIX_V0_1.md` — falsifiable gate-by-gate proof matrix.
 - `DEPENDENCY_DECISION_REGISTER_V0_1.md` — candidate disposition for native UI, Flow, Miney/model prior art, assets, and Godot.
 - `THIRD_PARTY_EVIDENCE_TEMPLATE.md` — provenance/license ledger template.
-- `COMPANION_PROTOCOL_V0_1.schema.json` — proposal-only companion action schema.
-- `COMPANION_POLICY_DECISION_V0_1.schema.json` — separate policy allow/deny/hold decision schema.
+- `COMPANION_PROTOCOL_V0_1.schema.json` — normative proposal-only companion action schema.
+- `COMPANION_POLICY_DECISION_V0_1.schema.json` — normative policy allow/deny/hold decision schema.
 - `NEXT_GATE_MAP_V0_1.md` — progression and bundling restrictions.
 - `RECOVERY_CHECKPOINT_V0_1.md` — conversation-independent orientation packet; evidence/orientation, never authority.
-- `V2_00R_ACCEPTANCE.md` — exact PASS/HOLD/FAIL boundary for local reverification.
-- `V2_00R_READ_ONLY_REVERIFY.ps1` — prepared console-only local currentness card; not evidence that it ran and not permission to run.
+- `V2_00R_ACCEPTANCE.md` — two-stage evidence-collection/reconciliation boundary.
+- `V2_00R_READ_ONLY_REVERIFY.ps1` — prepared console-only local evidence-collection card; not evidence that it ran and not permission to run.
 - `CURRENT_POSITION.txt` — compact machine-readable position marker.
-- `README_RECOVERY_ORDER.txt` — minimal recovery order for low-load resumption.
-- `ISSUE_PLAN_V0_1.md` — issue sequencing guidance without parallel-authority implication.
-- `ORCHESTRATION_COMPLETE.md` — checkpoint for this GitHub preparation pass.
+
+## Schema precedence note
+
+Until the next versioned Build Contract revision, the standalone companion JSON Schemas are normative for validation. Companion JSON snippets in `V0_2_BUILD_CONTRACT_V0_1.md` are conceptual examples and may omit fields added during the independent hardening pass.
 
 ## Hard separation rules
 
@@ -73,18 +88,20 @@ PRIVATE CONTEXT != PUBLIC WORLD HISTORY
 EXTERNAL DEPENDENCY != ARCHITECTURAL OWNER
 CAN_DO != MAY_DO
 WAS_TRUE != IS_TRUE_NOW
+EVIDENCE_COLLECTION_PASS != V2_00R_FINAL_PASS
 EXPERIMENT_PASS != CANONICAL_PROMOTION
 ```
 
 ## Current gate
 
 ```text
-SAFE_NEXT = V2-00R_READ_ONLY_LOCAL_REVERIFY
-PREPARED_AFTER_PASS = V2-01_ISOLATED_V0_2_SHELL
+SAFE_NEXT = V2-00R_READ_ONLY_LOCAL_EVIDENCE_COLLECTION
+V2_00R_FINAL_CLASSIFICATION = PENDING_FRESH_LOCAL_OUTPUT_AND_RECONCILIATION
+PREPARED_AFTER_FINAL_PASS = V2-01_ISOLATED_V0_2_SHELL
 LOCAL_CURRENTNESS = NOT_YET_REVERIFIED
 CANONICAL_PROMOTION = NONE
 SCOS_INTEGRATION = NONE
 MODEL_NETWORK_MODE = OFF_BY_DESIGN
 ```
 
-The first machine-side V0.2 mutation must remain an isolated shell/prototype, not a canonical Stella promotion. Before that mutation, reverify local Luanti version, V0.1 evidence/receipts/hashes, playground paths, protected files, process state, dependency state, and target isolation. This branch is research evidence, not machine-state evidence.
+The first machine-side V0.2 mutation must remain an isolated shell/prototype, not a canonical Stella promotion. Before that mutation, collect and reconcile fresh local Luanti version, V0.1 evidence/receipts/hashes, playground paths, protected files, process state, dependency state, and target isolation. This branch is research evidence, not machine-state evidence.
