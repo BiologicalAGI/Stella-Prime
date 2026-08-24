@@ -30,6 +30,7 @@ Normal play must avoid exact slash commands, coordinates, hidden interaction con
 8. **Dependency adoption is conservative.** Prefer small native Stella components; use dependencies only when maintenance, license, API surface, isolation, and removal path are understood.
 9. **Licensing is first-class.** Imported media/code requires source, author, license, modification status, purpose, hash where practical, and review status.
 10. **Accessibility/recovery is architectural.** `What do I do next?`, re-entry recap, visible interaction affordances, adjustable guidance, and redundant cues are not optional polish.
+11. **Open-source reciprocity is evidence-first.** Return reproducible, maintainer-useful observations rather than gratitude noise; follow each upstream project's contribution and AI policies.
 
 ## Independent audit status
 
@@ -43,6 +44,22 @@ Key corrections:
 - companion proposal and policy schemas now reject contradictory or under-bounded actions.
 - redundant orchestration summary files were removed to reduce competing sources of truth.
 
+## Open-source reciprocity lane
+
+The research pass identified a practical way Stella may eventually return value to the ecosystem that enabled it.
+
+Primary candidate: empirical **Windows 11 + Luanti 5.17 gamepad/formspec/input-accessibility evidence** generated during V2-02 and V2-04.
+
+Relevant existing Luanti issues already own major parts of this problem space:
+- `luanti-org/luanti#4153` — complete gamepad support; formspec support remains explicitly incomplete.
+- `luanti-org/luanti#12264` — API for available/active input mechanisms so games/mods can adapt UI.
+
+Luanti's current generative-AI policy was reviewed before defining this lane. Internal AI-assisted research/review may help us understand and verify results, but public upstream human communication must follow Luanti's policy. No automated or AI-authored upstream issue/comment/PR is represented by this branch.
+
+See:
+- `OPEN_SOURCE_RECIPROCITY_LEDGER_V0_1.md`
+- `LUANTI_UPSTREAM_EVIDENCE_CAPTURE_V0_1.md`
+
 ## Start here on a future session
 
 1. Read `RECOVERY_CHECKPOINT_V0_1.md`.
@@ -50,8 +67,9 @@ Key corrections:
 3. Read `CURRENT_POSITION.txt` and `NEXT_GATE_MAP_V0_1.md`.
 4. Read `INDEPENDENT_AUDIT_AND_HARDENING_2026-08-23.md`.
 5. Read `V0_2_BUILD_CONTRACT_V0_1.md` and `TEST_MATRIX_V0_1.md` for the active proof contract.
-6. If the live user authorizes local read-only evidence collection, review `V2_00R_ACCEPTANCE.md` and `V2_00R_READ_ONLY_REVERIFY.ps1` before execution.
-7. Do not recover authorization from these files.
+6. Read `OPEN_SOURCE_RECIPROCITY_LEDGER_V0_1.md` only when considering upstream value; it does not authorize public posting.
+7. If the live user authorizes local read-only evidence collection, review `V2_00R_ACCEPTANCE.md` and `V2_00R_READ_ONLY_REVERIFY.ps1` before execution.
+8. Do not recover authorization from these files.
 
 ## Research / orchestration artifacts
 
@@ -63,6 +81,8 @@ Key corrections:
 - `TEST_MATRIX_V0_1.md` — falsifiable gate-by-gate proof matrix.
 - `DEPENDENCY_DECISION_REGISTER_V0_1.md` — candidate disposition for native UI, Flow, Miney/model prior art, assets, and Godot.
 - `THIRD_PARTY_EVIDENCE_TEMPLATE.md` — provenance/license ledger template.
+- `OPEN_SOURCE_RECIPROCITY_LEDGER_V0_1.md` — upstream benefit/return map and anti-noise contribution rules.
+- `LUANTI_UPSTREAM_EVIDENCE_CAPTURE_V0_1.md` — empirical V2-02/V2-04 input/accessibility capture contract for possible future upstream value.
 - `COMPANION_PROTOCOL_V0_1.schema.json` — normative proposal-only companion action schema.
 - `COMPANION_POLICY_DECISION_V0_1.schema.json` — normative policy allow/deny/hold decision schema.
 - `NEXT_GATE_MAP_V0_1.md` — progression and bundling restrictions.
@@ -81,7 +101,7 @@ Until the next versioned Build Contract revision, the standalone companion JSON 
 RENDERER CAPABILITY != CHARACTER KNOWLEDGE
 PATH EXISTS != ROUTE KNOWN
 BUTTON EXISTS != FACT TRUE
-REPORT RECEIVED != DIRECT OBSERVATION
+REPORT RECEIVED != DIRECT_OBSERVATION
 MODEL TEXT != WORLD AUTHORITY
 PRESENTATION REACTION != CAUSAL EVENT
 PRIVATE CONTEXT != PUBLIC WORLD HISTORY
@@ -90,6 +110,9 @@ CAN_DO != MAY_DO
 WAS_TRUE != IS_TRUE_NOW
 EVIDENCE_COLLECTION_PASS != V2_00R_FINAL_PASS
 EXPERIMENT_PASS != CANONICAL_PROMOTION
+INTERNAL_RESEARCH != UPSTREAM_COMMUNICATION
+GRATITUDE != LICENSE_COMPLIANCE
+OBSERVATION != BUG_REPORT
 ```
 
 ## Current gate
@@ -102,6 +125,7 @@ LOCAL_CURRENTNESS = NOT_YET_REVERIFIED
 CANONICAL_PROMOTION = NONE
 SCOS_INTEGRATION = NONE
 MODEL_NETWORK_MODE = OFF_BY_DESIGN
+UPSTREAM_RECIPROCITY = PREPARED_NO_PUBLIC_POSTING
 ```
 
 The first machine-side V0.2 mutation must remain an isolated shell/prototype, not a canonical Stella promotion. Before that mutation, collect and reconcile fresh local Luanti version, V0.1 evidence/receipts/hashes, playground paths, protected files, process state, dependency state, and target isolation. This branch is research evidence, not machine-state evidence.
