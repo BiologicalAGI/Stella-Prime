@@ -22,6 +22,8 @@ OBSERVED THEN != TRUE NOW
 APPEND ORDER != OBSERVED-TIME CURRENTNESS
 FINITE INPUT != SAFE INTERMEDIATE ARITHMETIC
 SERIALIZED RECEIPT != TRUSTED CLAIM
+LINEAR SCALE != GENERIC SCALE
+COMPENSATORY AGGREGATE != DECISION AUTHORITY
 ```
 
 ## Lineage
@@ -30,37 +32,68 @@ SERIALIZED RECEIPT != TRUSTED CLAIM
 
 **Slide Ruler is new in this pass.** No earlier repository occurrence of `Slide Ruler` or `slide rule` was found during the 2026-08-23 recursive review. It is introduced here as a simpler companion instrument: Abacus tracks discrete observations on declared dimensions; Slide Ruler exposes continuous relative placement across declared scales.
 
+## Scale contract
+
+V0.1 supports one explicit scale model:
+
+```text
+SCALE_MODEL = LINEAR_MIN_MAX
+```
+
+That is intentional. This implementation does not silently reinterpret logarithmic, ordinal, categorical, or other scale semantics as linear min-max normalization. An unsupported model is rejected.
+
+Finite numeric endpoints are not enough to guarantee safe intermediate arithmetic, so normalization and interpolation are implemented to avoid full-range overflow on extreme finite endpoints such as `[-1e308,+1e308]`.
+
 ## Abacus
 
 A `Bead` contains:
-
 - stable `bead_id`;
 - named `dimension`;
 - finite numeric `value`;
-- explicitly declared `Scale`;
+- explicitly declared linear `Scale`;
 - `basis`;
 - `source`;
 - `observed_at` provenance text;
 - optional text note.
 
-The Abacus reports the **last-appended** position for each dimension and computes an explicitly weighted summary only when the caller supplies the weights. There is no implicit weighting and no authority decision attached to the resulting number.
-
-`observed_at` is not parsed or sorted in V0.1. Snapshots therefore declare:
+The Abacus reports the **last-appended** position for each dimension. `observed_at` is not parsed or sorted in V0.1, so snapshots explicitly state:
 
 ```text
 position_selection = LAST_APPENDED_PER_DIMENSION
 observed_at_ordering = NOT_INTERPRETED
 ```
 
-The implementation also rejects NaN/infinity, booleans-as-numbers, and integer values that cannot be represented exactly as the float arithmetic used by this reference.
+## Explicit weighting
+
+The supported aggregation model is named rather than implied:
+
+```text
+WEIGHTED_AGGREGATION_MODEL = COMPENSATORY_WEIGHTED_MEAN
+```
+
+A compensatory weighted mean can trade a lower dimension against a higher one. That mathematical property is not a safety rule, a veto rule, a scientific model, or decision authority.
+
+There is no implicit weighting. The caller must provide weights explicitly.
+
+For auditability, `explicit_weighted_receipt()` preserves:
+- canonical sorted dimensions;
+- selected last-appended bead IDs;
+- normalized positions;
+- canonical finite weights;
+- the scale and aggregation model names;
+- selection rule;
+- resulting weighted position;
+- schema version;
+- `authority = NONE`.
+
+The convenience `explicit_weighted_position()` returns only the numeric value derived from that same receipt path.
 
 ## Slide Ruler
 
 The Slide Ruler can:
-
-1. align two observations by relative position on their declared scales;
+1. align two observations by relative position on their declared linear scales;
 2. report the positional delta;
-3. project one normalized position onto another declared scale when a relation and justification are supplied.
+3. project one normalized position onto another declared linear scale when a relation and justification are supplied.
 
 Alignment and Projection receipts include their scale definitions and raw values so the numeric result can be recomputed from the receipt itself.
 
@@ -71,24 +104,13 @@ semantic_equivalence_established = false
 predictive_claim = false
 ```
 
-are derived non-claims. A caller cannot inject a different projected value/delta/claim through the normal dataclass constructor.
+are derived non-claims.
 
 Every serialized record uses:
 
 ```text
 schema_version = transparent-instruments/0.1
 ```
-
-## Numeric hardening
-
-Finite endpoints do not guarantee safe intermediate subtraction. For example, `(+1e308) - (-1e308)` overflows despite both endpoints being finite.
-
-V0.1 therefore:
-
-- normalizes after scaling values/endpoints by a common magnitude;
-- interpolates with a convex combination instead of subtracting the full range;
-- rescales explicit weights before `math.fsum` aggregation;
-- tests extreme finite values across the representable exponent range.
 
 ## Quick start
 
@@ -103,11 +125,11 @@ python example.py
 
 ## Empirical status
 
-Current validation on 2026-08-23 in Python **3.13.5**, Linux x86_64:
+The current locally executed candidate was validated on 2026-08-23 in Python **3.13.5**, Linux x86_64:
 
 ```text
-UNIT_TESTS=34
-PASS=34
+UNIT_TESTS=38
+PASS=38
 FAIL=0
 ERROR=0
 
@@ -121,19 +143,20 @@ TOTAL_RANDOMIZED_INVARIANT_CHECKS=35000
 RESULT=PASS
 ```
 
-The failure history is intentionally preserved. Earlier green states were superseded after review found:
+The repository currently has no GitHub Actions run for the exact newest PR head. Therefore this is stated as **local reference-candidate evidence**, not remote exact-head CI evidence.
 
+Failure-seeking has already found and corrected:
 1. non-finite numeric contamination;
 2. append-order/currentness ambiguity;
-3. extreme finite intermediate overflow and weight-sum overflow;
-4. forgeable/incomplete standalone receipt fields.
+3. extreme finite intermediate arithmetic and large-weight overflow;
+4. forgeable/incomplete derived receipt fields;
+5. hidden linear-scale and compensatory-aggregation assumptions.
 
-An independent GitHub Copilot code review also identified canonical numeric storage and an avoidable repeated bead scan; both were corrected. Copilot's review is advisory and does not count as merge authority.
+An independent GitHub Copilot review on an earlier head also identified canonical numeric storage and an avoidable repeated bead scan; both were corrected. Copilot review is advisory and does not count as merge authority.
 
 This evidence proves bounded implementation behavior only. It does **not** prove:
-
-- Windows compatibility;
-- scientific/statistical validity of a chosen dimension;
+- Windows/macOS compatibility;
+- scientific/statistical validity of a dimension;
 - correctness of supplied evidence;
 - temporal currentness;
 - semantic comparability of two scales;
@@ -141,22 +164,7 @@ This evidence proves bounded implementation behavior only. It does **not** prove
 - safety of a larger embedding system;
 - authorization to act.
 
-See `EMPIRICAL_STATUS.md` for the exact defect history, Git blob identities, proof boundary, and remaining failure-seeking work.
-
-## Why this exists
-
-A recurring failure mode in AI-assisted and human-built systems is to collapse several different things into one opaque score:
-
-```text
-observation
-+ interpretation
-+ weighting
-+ confidence
-+ authority
-= one number that looks objective
-```
-
-This reference takes the opposite approach. The numeric mechanics are intentionally small; provenance, reproducibility, and non-equivalence rules are first-class.
+See `EMPIRICAL_STATUS.md` for the defect history, current Git blob identities, proof boundary, and remaining failure-seeking work.
 
 ## What this is not
 
@@ -165,7 +173,8 @@ This reference takes the opposite approach. The numeric mechanics are intentiona
 - not a safety classifier;
 - not a permission system;
 - not a temporal currentness engine;
-- not a statistical package;
+- not a generic scale framework;
+- not a statistical validation package;
 - not a substitute for domain validation;
 - not a claim that historical Abacus experiments are proven.
 
