@@ -21,6 +21,7 @@ from typing import Dict, Iterable, Mapping, Optional, Tuple
 SCHEMA_VERSION = "transparent-instruments/0.1"
 SCALE_MODEL = "LINEAR_MIN_MAX"
 WEIGHTED_AGGREGATION_MODEL = "COMPENSATORY_WEIGHTED_MEAN"
+STORAGE_CONTRACT = "PUBLIC_API_APPEND_ONLY_NOT_TAMPER_PROOF"
 
 
 def _require_finite_number(value: object, field_name: str) -> float:
@@ -73,13 +74,19 @@ class Scale:
             raise ValueError("scale maximum must be greater than minimum")
         _require_text(self.unit, "scale unit")
         _require_text(self.label, "scale label")
+        _require_nonempty_text(self.model, "scale model")
         if self.model != SCALE_MODEL:
             raise ValueError(f"scale model must be {SCALE_MODEL}")
         object.__setattr__(self, "minimum", minimum)
         object.__setattr__(self, "maximum", maximum)
 
     def position(self, value: float) -> float:
-        """Return a normalized position in [0, 1] without range-overflow."""
+        """Return a normalized position in [0, 1] with adaptive arithmetic.
+
+        Direct subtraction is used when the interval width is finite because it
+        preserves precision on narrow same-sign intervals. Scale-relative
+        arithmetic is used only when the full interval width itself overflows.
+        """
         numeric = _require_finite_number(value, "value")
         minimum = self.minimum
         maximum = self.maximum
@@ -89,14 +96,19 @@ class Scale:
                 f"[{self.minimum!r}, {self.maximum!r}]"
             )
 
-        magnitude = max(abs(minimum), abs(maximum))
-        minimum_scaled = minimum / magnitude
-        maximum_scaled = maximum / magnitude
-        numeric_scaled = numeric / magnitude
-        position = (
-            (numeric_scaled - minimum_scaled)
-            / (maximum_scaled - minimum_scaled)
-        )
+        width = maximum - minimum
+        if math.isfinite(width):
+            position = (numeric - minimum) / width
+        else:
+            magnitude = max(abs(minimum), abs(maximum))
+            minimum_scaled = minimum / magnitude
+            maximum_scaled = maximum / magnitude
+            numeric_scaled = numeric / magnitude
+            position = (
+                (numeric_scaled - minimum_scaled)
+                / (maximum_scaled - minimum_scaled)
+            )
+
         if not math.isfinite(position):
             raise ArithmeticError("normalized position became non-finite")
         return min(1.0, max(0.0, position))
@@ -110,9 +122,11 @@ class Scale:
             return self.minimum
         if normalized == 1.0:
             return self.maximum
-        value = (
-            (1.0 - normalized) * self.minimum
-            + normalized * self.maximum
+        value = math.fsum(
+            (
+                (1.0 - normalized) * self.minimum,
+                normalized * self.maximum,
+            )
         )
         if not math.isfinite(value):
             raise ArithmeticError("scale interpolation became non-finite")
@@ -154,7 +168,11 @@ class Bead:
 
 
 class Abacus:
-    """Append-only in-memory board of observations.
+    """Board whose public mutation API is append-only.
+
+    This is an application-level contract, not tamper-proof memory. Python code
+    with direct access to private attributes or process memory is outside the
+    integrity guarantees of this reference implementation.
 
     The Abacus does not infer intent, make decisions, grant authorization,
     silently choose weights, or infer temporal currentness from observed_at.
@@ -273,6 +291,10 @@ class Abacus:
             "scale_model": SCALE_MODEL,
             "position_selection": "LAST_APPENDED_PER_DIMENSION",
             "dimensions": list(canonical_weights.keys()),
+            "selected_beads": {
+                dimension: selected_beads[dimension].to_dict()
+                for dimension in canonical_weights
+            },
             "bead_ids": {
                 dimension: selected_beads[dimension].bead_id
                 for dimension in canonical_weights
@@ -300,6 +322,7 @@ class Abacus:
             "position_selection": "LAST_APPENDED_PER_DIMENSION",
             "observed_at_ordering": "NOT_INTERPRETED",
             "scale_model": SCALE_MODEL,
+            "storage_contract": STORAGE_CONTRACT,
             "authority": "NONE",
         }
 
