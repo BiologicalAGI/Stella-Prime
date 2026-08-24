@@ -35,6 +35,22 @@ class ScaleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             Scale(False, 1)
 
+    def test_unrepresentable_integer_rejected(self):
+        with self.assertRaises(ValueError):
+            Scale(0, 10**10_000)
+
+    def test_extreme_finite_scale_normalizes_without_overflow(self):
+        scale = Scale(-1e308, 1e308)
+        self.assertEqual(scale.position(-1e308), 0.0)
+        self.assertEqual(scale.position(0.0), 0.5)
+        self.assertEqual(scale.position(1e308), 1.0)
+
+    def test_extreme_finite_scale_interpolates_without_overflow(self):
+        scale = Scale(-1e308, 1e308)
+        self.assertEqual(scale.value_at(0.0), -1e308)
+        self.assertEqual(scale.value_at(0.5), 0.0)
+        self.assertEqual(scale.value_at(1.0), 1e308)
+
 
 class AbacusTests(unittest.TestCase):
     def setUp(self):
@@ -105,6 +121,31 @@ class AbacusTests(unittest.TestCase):
             {"clarity": 3.0, "traceability": 1.0}
         )
         self.assertAlmostEqual(result, 0.75)
+
+    def test_extreme_finite_weights_do_not_overflow(self):
+        left = Bead(
+            "b.left.weight",
+            "left",
+            25,
+            self.scale,
+            "extreme-weight regression",
+            "fixture-A",
+            "2026-08-23T19:00:00-07:00",
+        )
+        right = Bead(
+            "b.right.weight",
+            "right",
+            75,
+            self.scale,
+            "extreme-weight regression",
+            "fixture-A",
+            "2026-08-23T19:00:01-07:00",
+        )
+        abacus = Abacus([left, right])
+        result = abacus.explicit_weighted_position(
+            {"left": 1e308, "right": 1e308}
+        )
+        self.assertEqual(result, 0.5)
 
     def test_missing_weighted_dimension_is_error(self):
         abacus = Abacus([self.clarity])
