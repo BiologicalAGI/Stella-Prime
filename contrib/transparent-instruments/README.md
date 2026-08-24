@@ -7,7 +7,7 @@ This small toolkit explores two deliberately transparent reasoning instruments:
 - **Abacus** — an append-only board of provenance-carrying observations across named dimensions.
 - **Slide Ruler** — a continuous-scale alignment/comparison instrument that exposes its relation and justification instead of silently asserting that unlike scales are equivalent.
 
-The goal is not to create another autonomous decision engine. The goal is to make measurement, normalization, weighting, comparison, and provenance inspectable enough that a human or larger system can see exactly what was done.
+The goal is not to create another autonomous decision engine. The goal is to make measurement, normalization, weighting, comparison, provenance, and ordering assumptions inspectable enough that a human or larger system can see exactly what was done.
 
 ## Design laws
 
@@ -19,6 +19,7 @@ ALIGNMENT != EQUIVALENCE
 PROJECTION != PREDICTION
 CAPABILITY != PERMISSION
 OBSERVED THEN != TRUE NOW
+APPEND ORDER != OBSERVED-TIME CURRENTNESS
 ```
 
 ## Lineage
@@ -40,7 +41,14 @@ A `Bead` contains:
 - `observed_at`
 - optional note
 
-The Abacus is append-only in memory. It can report latest positions and can calculate an explicitly weighted summary **only when the caller supplies the weights**. There is no implicit weighting and no authority decision attached to the resulting number.
+The Abacus is append-only in memory. It can report the **last-appended** position for each dimension and can calculate an explicitly weighted summary **only when the caller supplies the weights**. There is no implicit weighting and no authority decision attached to the resulting number.
+
+`observed_at` is preserved as provenance text only. V0.1 does not parse timestamps, sort observations by timestamp, or infer temporal currentness. A backfilled older observation appended later is therefore the last-appended observation, not evidence that it is newest in observed time. Snapshots declare this explicitly:
+
+```text
+position_selection = LAST_APPENDED_PER_DIMENSION
+observed_at_ordering = NOT_INTERPRETED
+```
 
 Non-finite numbers (`NaN`, positive/negative infinity) and booleans-as-numbers are rejected rather than allowed to silently contaminate normalized or weighted results.
 
@@ -83,16 +91,20 @@ UNIT_TESTS=12
 PASS=12
 ```
 
-A recursive failure-seeking review then found a non-finite-number edge case, corrected it, expanded validation, and established the current unit-test baseline:
+A recursive failure-seeking review then found a non-finite-number edge case, corrected it, and expanded validation to 18 tests.
+
+A later semantic review found that the API name `latest` could be misread as observed-time currentness even though the implementation used append order. That ambiguity was removed: the API now says `last_appended`, snapshots declare the ordering contract, and a backfill regression was added.
+
+Current unit-test baseline:
 
 ```text
-UNIT_TESTS=18
-PASS=18
+UNIT_TESTS=19
+PASS=19
 FAIL=0
 ERROR=0
 ```
 
-A fixed-seed randomized invariant run then exercised the hardened implementation:
+A fixed-seed randomized invariant run then exercised the corrected implementation:
 
 ```text
 SEED=20260823
@@ -111,6 +123,7 @@ This evidence proves only bounded implementation behavior in the recorded enviro
 - Windows compatibility;
 - statistical validity of a chosen dimension;
 - correctness of human-supplied evidence;
+- temporal currentness of an `observed_at` value;
 - semantic comparability of two scales;
 - predictive power;
 - safety of decisions made by a larger system;
@@ -139,6 +152,7 @@ This reference takes the opposite approach. The numeric mechanics are intentiona
 - not a confidence oracle
 - not a safety classifier
 - not a permission system
+- not a temporal ordering/currentness engine
 - not a statistical package
 - not a substitute for domain validation
 - not a claim that historical Abacus experiments are proven
