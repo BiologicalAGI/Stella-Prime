@@ -1,0 +1,123 @@
+name: V2-00R Card Preflight
+
+on:
+  push:
+    branches:
+      - validation/v2-00r-card-preflight-2026-08-23
+
+permissions:
+  contents: read
+
+jobs:
+  validate-card:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v4
+
+      - name: Show PowerShell environment
+        run: |
+          Write-Host ("PS_VERSION={0}" -f $PSVersionTable.PSVersion)
+          Write-Host ("PS_EDITION={0}" -f $PSVersionTable.PSEdition)
+          Write-Host ("OS={0}" -f [System.Environment]::OSVersion.VersionString)
+          Write-Host ("IS_64BIT_OS={0}" -f [Environment]::Is64BitOperatingSystem)
+
+      - name: Parse exact V2-00R card
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1').Path
+          $Tokens = $null
+          $Errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $Card,
+            [ref]$Tokens,
+            [ref]$Errors
+          ) | Out-Null
+
+          if ($Errors.Count -gt 0) {
+            $Errors | ForEach-Object {
+              Write-Error ("PARSE_ERROR|MESSAGE={0}|EXTENT={1}" -f $_.Message, $_.Extent.Text)
+            }
+            throw "V2-00R parser errors found"
+          }
+
+          Write-Host 'PARSE_RESULT=PASS'
+          Write-Host ("TOKEN_COUNT={0}" -f $Tokens.Count)
+
+      - name: Static mutation-boundary scan
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1').Path
+          $Tokens = $null
+          $Errors = $null
+          $Ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $Card,
+            [ref]$Tokens,
+            [ref]$Errors
+          )
+          if ($Errors.Count -gt 0) { throw 'Parser errors prevent boundary scan' }
+
+          $Forbidden = @(
+            'Set-Content','Add-Content','Clear-Content','Out-File','Tee-Object',
+            'New-Item','Remove-Item','Copy-Item','Move-Item','Rename-Item',
+            'Set-Item','Set-ItemProperty','New-ItemProperty','Remove-ItemProperty',
+            'Invoke-WebRequest','Invoke-RestMethod','Start-BitsTransfer',
+            'Start-Process','Stop-Process','Start-Service','Stop-Service','Restart-Service','Set-Service',
+            'Register-ScheduledTask','Unregister-ScheduledTask','Start-ScheduledTask',
+            'git','curl','curl.exe','wget','winget','choco','msiexec','msiexec.exe'
+          )
+
+          $Commands = @(
+            $Ast.FindAll(
+              { param($Node) $Node -is [System.Management.Automation.Language.CommandAst] },
+              $true
+            ) | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ } | Sort-Object -Unique
+          )
+
+          Write-Host ('COMMANDS=' + ($Commands -join ','))
+          $Hits = @($Commands | Where-Object { $Forbidden -contains $_ })
+          if ($Hits.Count -gt 0) {
+            throw ('FORBIDDEN_MUTATION_COMMANDS=' + ($Hits -join ','))
+          }
+
+          Write-Host 'STATIC_MUTATION_BOUNDARY=PASS'
+
+      - name: Execute card on clean hosted Windows as negative fixture
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1').Path
+          $OutputLines = @(& $Card 2>&1 | ForEach-Object { $_.ToString() })
+          $OutputLines | ForEach-Object { Write-Host $_ }
+
+          $Output = $OutputLines -join "`n"
+
+          $Required = @(
+            'MODE=READ_ONLY_LOCAL_EVIDENCE_COLLECTION',
+            'NETWORK_USE=NO',
+            'DOWNLOAD=NO',
+            'INSTALL=NO',
+            'FILE_MUTATION=NO',
+            'PROCESS_MUTATION=NO',
+            'GIT_MUTATION=NO',
+            'SCOS_MUTATION=NO',
+            'CANONICAL_PROMOTION=NO',
+            'FINAL_V2_00R_PASS_SELF_AWARDED=NO',
+            'SAFE_TO_CLEAR_TERMINAL=YES'
+          )
+
+          foreach ($Needle in $Required) {
+            if (-not $Output.Contains($Needle)) {
+              throw ("MISSING_REQUIRED_OUTPUT={0}" -f $Needle)
+            }
+          }
+
+          if ($Output -notmatch 'RESULT=(PASS_V2_00R_EVIDENCE_COLLECTION_COMPLETE|HOLD_V2_00R_EVIDENCE_COLLECTION)') {
+            throw 'NO_CONTROLLED_COLLECTION_RESULT'
+          }
+
+          if ($Output -match 'V2_00R_FINAL_CLASSIFICATION=PASS') {
+            throw 'CARD_SELF_AWARDED_FINAL_PASS'
+          }
+
+          Write-Host 'NEGATIVE_FIXTURE_EXECUTION=PASS'
+          Write-Host 'NOTE=Hosted-runner HOLD/PASS collection status is not local iBUYPOWER evidence.'
