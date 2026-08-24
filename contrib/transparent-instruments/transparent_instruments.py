@@ -15,7 +15,23 @@ process control, or machine mutation.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 from typing import Dict, Iterable, Mapping, Optional, Tuple
+
+
+def _require_finite_number(value: object, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} must be a finite int or float")
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        raise ValueError(f"{field_name} must be finite")
+    return numeric
+
+
+def _require_nonempty_text(value: object, field_name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
 
 
 @dataclass(frozen=True)
@@ -33,23 +49,29 @@ class Scale:
     label: str = ""
 
     def __post_init__(self) -> None:
-        if self.maximum <= self.minimum:
+        minimum = _require_finite_number(self.minimum, "scale minimum")
+        maximum = _require_finite_number(self.maximum, "scale maximum")
+        if maximum <= minimum:
             raise ValueError("scale maximum must be greater than minimum")
 
     def position(self, value: float) -> float:
         """Return a normalized position in [0, 1]."""
-        if value < self.minimum or value > self.maximum:
+        numeric = _require_finite_number(value, "value")
+        minimum = float(self.minimum)
+        maximum = float(self.maximum)
+        if numeric < minimum or numeric > maximum:
             raise ValueError(
                 f"value {value!r} is outside declared scale "
                 f"[{self.minimum!r}, {self.maximum!r}]"
             )
-        return (value - self.minimum) / (self.maximum - self.minimum)
+        return (numeric - minimum) / (maximum - minimum)
 
     def value_at(self, position: float) -> float:
         """Return the raw value at a normalized position in [0, 1]."""
-        if position < 0.0 or position > 1.0:
+        normalized = _require_finite_number(position, "position")
+        if normalized < 0.0 or normalized > 1.0:
             raise ValueError("position must be within [0, 1]")
-        return self.minimum + position * (self.maximum - self.minimum)
+        return float(self.minimum) + normalized * (float(self.maximum) - float(self.minimum))
 
 
 @dataclass(frozen=True)
@@ -67,8 +89,7 @@ class Bead:
 
     def __post_init__(self) -> None:
         for field_name in ("bead_id", "dimension", "basis", "source", "observed_at"):
-            if not str(getattr(self, field_name)).strip():
-                raise ValueError(f"{field_name} must be non-empty")
+            _require_nonempty_text(getattr(self, field_name), field_name)
         # Validate at construction so invalid observations cannot enter an Abacus.
         self.scale.position(self.value)
 
@@ -132,14 +153,16 @@ class Abacus:
         missing: list[str] = []
 
         for dimension, weight in weights.items():
-            if weight < 0:
+            _require_nonempty_text(dimension, "weight dimension")
+            numeric_weight = _require_finite_number(weight, f"weight for {dimension}")
+            if numeric_weight < 0:
                 raise ValueError("weights must be non-negative")
             bead = self.latest(dimension)
             if bead is None:
                 missing.append(dimension)
                 continue
-            numerator += bead.position * weight
-            denominator += weight
+            numerator += bead.position * numeric_weight
+            denominator += numeric_weight
 
         if missing:
             raise ValueError("missing dimensions: " + ", ".join(sorted(missing)))
@@ -207,10 +230,8 @@ class SlideRuler:
         relation: str,
         justification: str,
     ) -> Alignment:
-        if not relation.strip():
-            raise ValueError("relation must be non-empty")
-        if not justification.strip():
-            raise ValueError("justification must be non-empty")
+        _require_nonempty_text(relation, "relation")
+        _require_nonempty_text(justification, "justification")
 
         left_position = left.position
         right_position = right.position
@@ -233,10 +254,8 @@ class SlideRuler:
         relation: str,
         justification: str,
     ) -> Projection:
-        if not relation.strip():
-            raise ValueError("relation must be non-empty")
-        if not justification.strip():
-            raise ValueError("justification must be non-empty")
+        _require_nonempty_text(relation, "relation")
+        _require_nonempty_text(justification, "justification")
 
         position = from_scale.position(value)
         return Projection(
