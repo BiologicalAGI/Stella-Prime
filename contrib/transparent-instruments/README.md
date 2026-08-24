@@ -42,6 +42,8 @@ A `Bead` contains:
 
 The Abacus is append-only in memory. It can report latest positions and can calculate an explicitly weighted summary **only when the caller supplies the weights**. There is no implicit weighting and no authority decision attached to the resulting number.
 
+Non-finite numbers (`NaN`, positive/negative infinity) and booleans-as-numbers are rejected rather than allowed to silently contaminate normalized or weighted results.
+
 ## Slide Ruler
 
 The Slide Ruler can:
@@ -71,11 +73,20 @@ python example.py
 
 ## Empirical status
 
-Validated on 2026-08-23 in a Python **3.13.5**, Linux x86_64 sandbox:
+Validated on 2026-08-23 in a Python **3.13.5**, Linux x86_64 sandbox.
+
+Initial pass:
 
 ```text
 UNIT_TESTS=12
 PASS=12
+```
+
+A recursive failure-seeking review then found a non-finite-number edge case, corrected it, expanded validation, and established the current baseline:
+
+```text
+UNIT_TESTS=18
+PASS=18
 FAIL=0
 ERROR=0
 ```
@@ -89,6 +100,8 @@ This proves only that the current reference implementation behaves as specified 
 - predictive power;
 - safety of decisions made by a larger system;
 - authorization to act.
+
+See `EMPIRICAL_STATUS.md` for the defect history, exact proof boundary, and next failure-seeking tests.
 
 ## Why this exists
 
@@ -120,7 +133,7 @@ This reference takes the opposite approach. The numeric mechanics are intentiona
 - `transparent_instruments.py` — dependency-free reference implementation.
 - `test_transparent_instruments.py` — executable unit tests.
 - `example.py` — minimal usage example.
-- `EMPIRICAL_STATUS.md` — proof boundary and current validation record.
+- `EMPIRICAL_STATUS.md` — proof boundary, defect history, and current validation record.
 - `LICENSE_STATUS.md` — licensing hold for this public draft.
 
 ## Contribution posture
