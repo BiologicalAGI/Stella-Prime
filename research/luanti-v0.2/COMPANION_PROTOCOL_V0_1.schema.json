@@ -5,6 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "schema_version",
     "proposal_id",
     "actor_ref",
     "intent",
@@ -13,6 +14,9 @@
     "requested_executor"
   ],
   "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
     "proposal_id": {
       "type": "string",
       "pattern": "^proposal\\.[A-Za-z0-9._-]+$"
@@ -33,14 +37,19 @@
       ]
     },
     "target_actor_ref": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "pattern": "^actor\\.[A-Za-z0-9._-]+$"
     },
     "target_place_ref": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "pattern": "^place\\.[A-Za-z0-9._-]+$"
     },
     "basis_refs": {
       "type": "array",
-      "items": {"type": "string"},
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     },
     "authority": {
@@ -51,7 +60,8 @@
       "enum": ["none", "orient", "follow", "wait", "navigate"]
     },
     "context_packet_ref": {
-      "type": ["string", "null"]
+      "type": ["string", "null"],
+      "pattern": "^context\\.[A-Za-z0-9._-]+$"
     }
   },
   "allOf": [
@@ -61,7 +71,87 @@
         "required": ["intent"]
       },
       "then": {
-        "required": ["target_place_ref"]
+        "required": ["target_place_ref"],
+        "properties": {
+          "target_place_ref": {
+            "type": "string",
+            "pattern": "^place\\.[A-Za-z0-9._-]+$"
+          },
+          "basis_refs": {"minItems": 1},
+          "requested_executor": {"const": "navigate"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent": {"const": "point_to_target"}},
+        "required": ["intent"]
+      },
+      "then": {
+        "anyOf": [
+          {
+            "required": ["target_actor_ref"],
+            "properties": {"target_actor_ref": {"type": "string"}}
+          },
+          {
+            "required": ["target_place_ref"],
+            "properties": {"target_place_ref": {"type": "string"}}
+          }
+        ],
+        "properties": {
+          "requested_executor": {"const": "orient"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent": {"const": "follow_player"}},
+        "required": ["intent"]
+      },
+      "then": {
+        "properties": {
+          "requested_executor": {"const": "follow"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent": {"const": "wait"}},
+        "required": ["intent"]
+      },
+      "then": {
+        "properties": {
+          "requested_executor": {"const": "wait"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent": {"const": "come_here"}},
+        "required": ["intent"]
+      },
+      "then": {
+        "required": ["target_actor_ref"],
+        "properties": {
+          "target_actor_ref": {
+            "type": "string",
+            "pattern": "^actor\\.[A-Za-z0-9._-]+$"
+          },
+          "requested_executor": {"const": "navigate"}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"intent": {"const": "observe"}},
+        "required": ["intent"]
+      },
+      "then": {
+        "properties": {
+          "requested_executor": {
+            "enum": ["none", "orient"]
+          }
+        }
       }
     }
   ]
