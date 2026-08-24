@@ -4,33 +4,42 @@ Date: 2026-08-23
 
 ## Current validation
 
-The exact reference implementation and test logic were exercised before publication, adversarially reviewed, corrected after defects were found, and re-tested after each semantic change.
+The reference implementation has been repeatedly attacked, corrected, and rerun rather than treating the first green result as final truth.
 
-Environment observed:
+Current environment observed:
 
 ```text
 PYTHON=3.13.5
 OS=Linux 6.18.35 x86_64
 EXTERNAL_PYTHON_DEPENDENCIES=NONE
-UNIT_TESTS=19
-PASS=19
+UNIT_TESTS=34
+PASS=34
 FAIL=0
 ERROR=0
 ```
 
-The deterministic randomized invariant suite was rerun against the current implementation:
+Current deterministic randomized invariant run:
 
 ```text
 SEED=20260823
 ROUNDTRIP_CHECKS=10000
+EXTREME_SCALE_CHECKS=10000
 PROJECTION_CHECKS=5000
 WEIGHTED_CHECKS=5000
 ALIGNMENT_CHECKS=5000
-TOTAL_RANDOMIZED_INVARIANT_CHECKS=25000
+TOTAL_RANDOMIZED_INVARIANT_CHECKS=35000
 RESULT=PASS
 ```
 
-The exact randomized driver is `randomized_invariants.py` so the categories and seed are reproducible.
+Current public Git blob identities for the executed implementation/test/randomized artifacts:
+
+```text
+transparent_instruments.py = eebb37f8451846c75da734cd5379c1510eede3ae
+test_transparent_instruments.py = ea34f03f2aaf629ec5d5db6be34a431b325f21da
+randomized_invariants.py = 7cc7be093db27193d23a04904e44ac7ed0db39d1
+```
+
+The exact test blob differs from the pre-upload local draft only by blank-line formatting; its exact Git blob identity was reconstructed and the exact content passed 34/34 tests.
 
 ## Evidence history
 
@@ -41,121 +50,146 @@ UNIT_TESTS=12
 PASS=12
 ```
 
-This was superseded by later failure-seeking evidence.
+Superseded by later failure-seeking evidence.
 
 ### Finding 1 — non-finite numeric contamination
 
-Ordinary Python comparisons do not reliably reject `NaN`. A non-finite scale/value/weight could therefore have produced a non-finite normalized or aggregate result.
+Ordinary comparisons do not reliably reject `NaN`. Non-finite scale values, observations, or weights could contaminate normalized/aggregate output.
 
 Correction:
 
-- finite numeric validation was added for scale bounds, observations, positions, and weights;
-- booleans are rejected as numeric measurements;
-- required provenance/relation fields must be non-empty strings;
-- the unit suite expanded to 18 tests.
+- reject NaN and infinities;
+- reject booleans as numeric measurements;
+- require non-empty required provenance/relation text.
 
-### Finding 2 — append order could be mislabeled as temporal currentness
+### Finding 2 — append order could masquerade as temporal currentness
 
-The earlier API used the name `latest(dimension)` while `Bead` also carries an `observed_at` field. The implementation actually selected the last bead **appended**, not the bead with the newest observed timestamp.
-
-That behavior was deterministic, but the name could invite an unsupported currentness inference:
-
-```text
-LAST APPENDED != NEWEST OBSERVED TIME
-```
-
-A concrete backfill counterexample was tested:
-
-1. append an observation labeled `2026-08-23T20:00:00-07:00`;
-2. then append a backfilled observation labeled `2026-08-23T18:00:00-07:00`;
-3. append order selects the second record even though its `observed_at` text denotes an earlier time.
+The earlier API name `latest()` selected the last **appended** bead while every bead also carries `observed_at` text. A backfilled older observation appended later therefore exposed an unsupported currentness implication.
 
 Correction:
 
-- `latest()` was replaced by `last_appended()`;
-- `positions()` was replaced by `last_appended_positions()`;
-- snapshot output now states:
-
 ```text
+latest() -> last_appended()
+positions() -> last_appended_positions()
 position_selection = LAST_APPENDED_PER_DIMENSION
 observed_at_ordering = NOT_INTERPRETED
 ```
 
-- `observed_at` remains provenance text; V0.1 does not parse or compare it;
-- a regression test freezes this distinction;
-- the current suite is 19/19 passing.
+V0.1 preserves `observed_at` as provenance text and does not parse or compare timestamps.
 
-This correction is semantic hardening, not evidence that V0.1 implements a temporal currentness engine.
+### Finding 3 — finite inputs could still overflow intermediate arithmetic
+
+The prior normalization formula used:
+
+```text
+(value - minimum) / (maximum - minimum)
+```
+
+For the valid finite scale `[-1e308, +1e308]`, `maximum - minimum` overflows. Direct reproduction showed:
+
+```text
+position(0.0)      -> 0.0   # should be 0.5
+position(1e308)    -> NaN
+value_at(0.5)      -> inf
+```
+
+Likewise, two valid weights of `1e308` could overflow the weight sum and produce a wrong aggregate.
+
+Correction:
+
+- scale normalization now divides endpoints/value by a common finite magnitude before differencing;
+- interpolation uses a convex combination instead of subtracting the full range;
+- explicit weighting rescales all weights by the maximum weight before `math.fsum` aggregation;
+- integers that cannot be represented exactly as float are rejected rather than silently rounded;
+- randomized coverage now includes 10,000 extreme finite scales spanning subnormal through near-maximum exponents and weights spanning approximately `1e-300` through `1e308`.
+
+### Finding 4 — receipt integrity was only guaranteed on the intended constructor path
+
+Earlier `Alignment` and `Projection` dataclasses exposed derived fields directly. A caller could instantiate a receipt with an arbitrary projected value/delta and could even set non-claim flags such as `predictive_claim=True` before serialization.
+
+Correction:
+
+- Alignment positions/delta are derived properties;
+- Projection source position/projected value are derived properties;
+- semantic-equivalence and predictive-claim flags are fixed derived false properties;
+- derived fields cannot be injected through constructors;
+- receipts include the declared scales/values necessary to recompute their numeric result;
+- strict JSON serialization is tested with `allow_nan=False`;
+- records expose `schema_version = transparent-instruments/0.1`;
+- validated numeric inputs are stored canonically as finite floats;
+- optional scale metadata and notes are required to be text.
+
+### Independent GitHub Copilot review
+
+A manually requested GitHub Copilot code review on PR #2 reviewed all seven changed files and returned a COMMENTED review recommending approval with two improvement comments.
+
+The comments identified:
+
+1. validated Scale endpoints should be canonicalized into stored floats;
+2. weighted lookup should avoid rescanning all beads once per requested dimension.
+
+Both were addressed on later commits. Copilot's review is advisory only and is not treated as approval or merge authority.
 
 ## Current unit-test coverage
 
-The 19-test suite covers:
+The 34-test suite now covers:
 
-1. scale normalization round-trip;
-2. rejection of invalid scale bounds;
-3. rejection of out-of-range observations;
-4. rejection of NaN/infinite scale bounds;
-5. rejection of NaN/infinite observed values;
-6. rejection of booleans as numeric scale bounds;
-7. Abacus append/last-appended behavior;
-8. explicit backfill test separating append order from observed-time currentness;
-9. duplicate bead-ID rejection;
-10. absence of implicit weighting;
-11. deterministic explicit weighting;
-12. missing weighted dimensions as an error;
-13. rejection of NaN/infinite weights;
-14. rejection of non-string bead identity;
-15. explicit `authority = NONE` in snapshots;
-16. Slide Ruler relative alignment;
-17. required relation declaration;
-18. rejection of non-text relation values;
-19. projection that explicitly establishes neither semantic equivalence nor prediction.
+- ordinary and extreme scale normalization/interpolation;
+- invalid/out-of-range/non-finite/unrepresentable numeric inputs;
+- canonical float storage and text-only metadata boundaries;
+- append-order semantics and backfill/currentness separation;
+- duplicate/non-Bead rejection;
+- explicit-only weighting, missing dimensions, non-finite weights, and extreme finite weights;
+- schema version and `authority = NONE` snapshot declarations;
+- strict JSON snapshot serialization;
+- relative alignment and projection non-claim semantics;
+- self-reproducible Alignment and Projection receipts;
+- prevention of caller injection of derived receipt fields/claims.
 
 ## Randomized invariant coverage
 
-The fixed-seed run checks implementation properties over arbitrary finite inputs:
+The fixed-seed run checks:
 
-- scale position/value round-trip remains bounded and numerically stable within an explicit floating-point tolerance;
-- Slide Ruler projections remain inside the declared target scale and never flip their semantic-equivalence/prediction flags;
-- explicitly weighted Abacus summaries remain within `[0, 1]` when component observations are on `[0, 1]` after normalization;
-- alignment delta remains defined as `left_position - right_position` within numerical tolerance and remains inside `[-1, 1]`.
+- 10,000 ordinary scale round trips;
+- 10,000 extreme finite scale interpolation/normalization cases;
+- 5,000 Slide Ruler projections;
+- 5,000 weighted Abacus runs over a very wide finite weight range;
+- 5,000 Alignment delta checks.
 
-This is implementation-invariant evidence, not statistical validation of any real-world metric.
+This is implementation-invariant evidence, not validation of any real-world metric or interpretation.
 
 ## What this evidence supports
 
-`PASS_REFERENCE_BEHAVIOR_V0_1_SEMANTICALLY_HARDENED`
+`PASS_REFERENCE_BEHAVIOR_V0_1_RECEIPT_HARDENED`
 
-Meaning: the current reference code behaved according to 19 executable unit tests plus 25,000 deterministic randomized invariant checks in the recorded environment, and its append-order semantics no longer masquerade as observed-time currentness.
+Meaning: the current public implementation behaves according to 34 executable unit tests and 35,000 deterministic randomized invariant checks in the recorded environment, including explicit extreme-range arithmetic and receipt-integrity regressions.
 
 ## What this evidence does not support
 
 It does not establish:
 
 - scientific validity of arbitrary dimensions;
-- validity of any confidence estimate;
-- correctness of a source observation;
-- temporal ordering or currentness from `observed_at`;
+- validity of a confidence estimate;
+- correctness of human-supplied evidence;
+- temporal ordering/currentness from `observed_at`;
 - semantic equivalence between aligned scales;
 - causal inference;
 - predictive performance;
 - permission or authority;
 - Windows/macOS runtime compatibility;
+- cross-language agreement;
 - production readiness;
 - security of a larger system embedding these objects.
 
 ## Failure-seeking next tests
 
-Useful next work would attempt to break the model rather than add features:
+Useful next work should continue trying to falsify assumptions rather than adding features:
 
-- serialization round-trip;
-- an explicit event/sequence identifier if persistent append order is required across stores;
-- timestamp parsing/versioning only if temporal queries become an actual requirement;
-- deterministic ordering across persistence layers;
-- malformed or adversarial provenance strings beyond type/emptiness checks;
-- explicit versioning of record shapes;
+- persistence/deserialize/re-serialize round-trip under an explicit loader contract;
+- deterministic sequence identity if append order must survive external storage;
+- maliciously large provenance payload/resource-limit policy;
 - cross-language implementation agreement;
-- extreme but finite floating-point conditioning cases;
-- human-factor tests for whether users misread normalized position as probability or truth.
+- human-factor testing for whether normalized position is misread as probability or truth;
+- Windows validation on the intended local host.
 
-Until those are performed, they remain `NOT_PROVEN`.
+Until performed, these remain `NOT_PROVEN`.
