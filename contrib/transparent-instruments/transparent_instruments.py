@@ -19,6 +19,8 @@ import math
 from typing import Dict, Iterable, Mapping, Optional, Tuple
 
 SCHEMA_VERSION = "transparent-instruments/0.1"
+SCALE_MODEL = "LINEAR_MIN_MAX"
+WEIGHTED_AGGREGATION_MODEL = "COMPENSATORY_WEIGHTED_MEAN"
 
 
 def _require_finite_number(value: object, field_name: str) -> float:
@@ -51,9 +53,9 @@ def _require_text(value: object, field_name: str) -> str:
 
 @dataclass(frozen=True)
 class Scale:
-    """A declared numeric scale.
+    """A declared linear min-max numeric scale.
 
-    A scale only defines how a numeric value maps to a relative position.
+    A scale defines how a numeric value maps to a relative linear position.
     It does not establish what the dimension means or whether two scales
     are semantically comparable.
     """
@@ -62,6 +64,7 @@ class Scale:
     maximum: float
     unit: str = ""
     label: str = ""
+    model: str = SCALE_MODEL
 
     def __post_init__(self) -> None:
         minimum = _require_finite_number(self.minimum, "scale minimum")
@@ -70,6 +73,8 @@ class Scale:
             raise ValueError("scale maximum must be greater than minimum")
         _require_text(self.unit, "scale unit")
         _require_text(self.label, "scale label")
+        if self.model != SCALE_MODEL:
+            raise ValueError(f"scale model must be {SCALE_MODEL}")
         object.__setattr__(self, "minimum", minimum)
         object.__setattr__(self, "maximum", maximum)
 
@@ -184,54 +189,106 @@ class Abacus:
                 return bead
         return None
 
-    def last_appended_positions(self) -> Dict[str, float]:
-        """Return each dimension's last-appended normalized position."""
-        result: Dict[str, float] = {}
+    def last_appended_beads(self) -> Dict[str, Bead]:
+        """Return each dimension's last-appended bead."""
+        result: Dict[str, Bead] = {}
         for bead in self._beads:
-            result[bead.dimension] = bead.position
+            result[bead.dimension] = bead
         return result
 
-    def explicit_weighted_position(self, weights: Mapping[str, float]) -> float:
-        """Combine last-appended positions only when caller declares every weight.
+    def last_appended_positions(self) -> Dict[str, float]:
+        """Return each dimension's last-appended normalized position."""
+        return {
+            dimension: bead.position
+            for dimension, bead in self.last_appended_beads().items()
+        }
 
-        This method is intentionally explicit. There is no default weighting.
-        Missing dimensions, negative weights, and a zero total weight are errors.
-        The returned number is a mathematical summary, not an authority decision.
-        """
+    def _resolve_weighted_inputs(
+        self, weights: Mapping[str, float]
+    ) -> tuple[Dict[str, Bead], Dict[str, float]]:
         if not weights:
             raise ValueError("weights are required; no implicit weighting is allowed")
 
-        positions = self.last_appended_positions()
-        resolved: list[tuple[float, float]] = []
+        raw_dimensions = list(weights.keys())
+        for dimension in raw_dimensions:
+            _require_nonempty_text(dimension, "weight dimension")
+        dimensions = sorted(raw_dimensions)
+
+        last_beads = self.last_appended_beads()
+        selected_beads: Dict[str, Bead] = {}
+        canonical_weights: Dict[str, float] = {}
         missing: list[str] = []
 
-        for dimension, weight in weights.items():
-            _require_nonempty_text(dimension, "weight dimension")
-            numeric_weight = _require_finite_number(weight, f"weight for {dimension}")
+        for dimension in dimensions:
+            numeric_weight = _require_finite_number(
+                weights[dimension], f"weight for {dimension}"
+            )
             if numeric_weight < 0:
                 raise ValueError("weights must be non-negative")
-            if dimension not in positions:
+            bead = last_beads.get(dimension)
+            if bead is None:
                 missing.append(dimension)
                 continue
-            resolved.append((positions[dimension], numeric_weight))
+            selected_beads[dimension] = bead
+            canonical_weights[dimension] = numeric_weight
 
         if missing:
-            raise ValueError("missing dimensions: " + ", ".join(sorted(missing)))
+            raise ValueError("missing dimensions: " + ", ".join(missing))
 
-        maximum_weight = max(weight for _, weight in resolved)
-        if maximum_weight <= 0:
+        if max(canonical_weights.values()) <= 0:
             raise ValueError("sum of weights must be positive")
+        return selected_beads, canonical_weights
 
-        scaled = [
-            (position, weight / maximum_weight)
-            for position, weight in resolved
-        ]
-        denominator = math.fsum(weight for _, weight in scaled)
-        numerator = math.fsum(position * weight for position, weight in scaled)
+    @staticmethod
+    def _weighted_value(
+        selected_beads: Mapping[str, Bead],
+        canonical_weights: Mapping[str, float],
+    ) -> float:
+        maximum_weight = max(canonical_weights.values())
+        scaled_weights = {
+            dimension: weight / maximum_weight
+            for dimension, weight in canonical_weights.items()
+        }
+        denominator = math.fsum(scaled_weights.values())
+        numerator = math.fsum(
+            selected_beads[dimension].position * scaled_weights[dimension]
+            for dimension in canonical_weights
+        )
         result = numerator / denominator
         if not math.isfinite(result):
             raise ArithmeticError("weighted position became non-finite")
         return min(1.0, max(0.0, result))
+
+    def explicit_weighted_receipt(
+        self, weights: Mapping[str, float]
+    ) -> Dict[str, object]:
+        """Return a reproducible receipt for explicit compensatory weighting."""
+        selected_beads, canonical_weights = self._resolve_weighted_inputs(weights)
+        value = self._weighted_value(selected_beads, canonical_weights)
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "instrument": "abacus",
+            "operation": "explicit_weighted_position",
+            "aggregation_model": WEIGHTED_AGGREGATION_MODEL,
+            "scale_model": SCALE_MODEL,
+            "position_selection": "LAST_APPENDED_PER_DIMENSION",
+            "dimensions": list(canonical_weights.keys()),
+            "bead_ids": {
+                dimension: selected_beads[dimension].bead_id
+                for dimension in canonical_weights
+            },
+            "positions": {
+                dimension: selected_beads[dimension].position
+                for dimension in canonical_weights
+            },
+            "weights": dict(canonical_weights),
+            "value": value,
+            "authority": "NONE",
+        }
+
+    def explicit_weighted_position(self, weights: Mapping[str, float]) -> float:
+        """Return the numeric value from an explicit weighted receipt."""
+        return float(self.explicit_weighted_receipt(weights)["value"])
 
     def snapshot(self) -> Dict[str, object]:
         return {
@@ -242,6 +299,7 @@ class Abacus:
             "last_appended_positions": self.last_appended_positions(),
             "position_selection": "LAST_APPENDED_PER_DIMENSION",
             "observed_at_ordering": "NOT_INTERPRETED",
+            "scale_model": SCALE_MODEL,
             "authority": "NONE",
         }
 
