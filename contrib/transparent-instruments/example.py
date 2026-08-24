@@ -35,7 +35,8 @@ print(
     abacus.explicit_weighted_position({"clarity": 1, "traceability": 1}),
 )
 
-# Slide Ruler projection is mathematical alignment only.
+# Slide Ruler projection is mathematical alignment only. Its receipt carries
+# the scale definitions and schema version needed to recompute the result.
 projection = SlideRuler.project(
     82,
     from_scale=percent,
