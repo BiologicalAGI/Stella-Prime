@@ -4,6 +4,7 @@ import unittest
 from transparent_instruments import (
     SCHEMA_VERSION,
     SCALE_MODEL,
+    STORAGE_CONTRACT,
     WEIGHTED_AGGREGATION_MODEL,
     Abacus,
     Alignment,
@@ -85,6 +86,11 @@ class ScaleTests(unittest.TestCase):
         self.assertEqual(scale.value_at(0.0), -1e308)
         self.assertEqual(scale.value_at(0.5), 0.0)
         self.assertEqual(scale.value_at(1.0), 1e308)
+
+    def test_narrow_same_sign_interval_preserves_relative_position(self):
+        scale = Scale(-1.000000000000013e-10, -1e-10)
+        value = -1.0000000000000007e-10
+        self.assertEqual(scale.position(value), 0.95)
 
 
 class AbacusTests(unittest.TestCase):
@@ -214,6 +220,19 @@ class AbacusTests(unittest.TestCase):
         self.assertEqual(receipt["authority"], "NONE")
         json.dumps(receipt, allow_nan=False, sort_keys=True)
 
+    def test_weighted_receipt_carries_full_selected_bead_provenance(self):
+        abacus = Abacus([self.clarity, self.traceability])
+        receipt = abacus.explicit_weighted_receipt(
+            {"clarity": 3, "traceability": 1}
+        )
+        clarity_receipt = receipt["selected_beads"]["clarity"]
+        scale = Scale(**clarity_receipt["scale"])
+        self.assertEqual(clarity_receipt["bead_id"], self.clarity.bead_id)
+        self.assertEqual(clarity_receipt["basis"], self.clarity.basis)
+        self.assertEqual(clarity_receipt["source"], self.clarity.source)
+        self.assertEqual(scale.position(clarity_receipt["value"]), clarity_receipt["position"])
+        self.assertEqual(clarity_receipt["position"], receipt["positions"]["clarity"])
+
     def test_weighted_receipt_is_insertion_order_deterministic(self):
         abacus = Abacus([self.clarity, self.traceability])
         first = abacus.explicit_weighted_receipt(
@@ -282,6 +301,15 @@ class AbacusTests(unittest.TestCase):
         self.assertEqual(snapshot["schema_version"], SCHEMA_VERSION)
         self.assertEqual(snapshot["authority"], "NONE")
         self.assertEqual(snapshot["bead_count"], 1)
+
+    def test_snapshot_declares_public_api_storage_boundary(self):
+        snapshot = Abacus([self.clarity]).snapshot()
+        self.assertEqual(snapshot["storage_contract"], STORAGE_CONTRACT)
+        self.assertEqual(
+            snapshot["storage_contract"],
+            "PUBLIC_API_APPEND_ONLY_NOT_TAMPER_PROOF",
+        )
+        self.assertIsInstance(Abacus([self.clarity]).beads, tuple)
 
     def test_snapshot_is_strict_json_serializable(self):
         snapshot = Abacus([self.clarity]).snapshot()
