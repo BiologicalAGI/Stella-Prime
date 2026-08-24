@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - validation/v2-00r-card-preflight-2026-08-23
+  pull_request:
+    branches:
+      - research/luanti-v0.2-build-contract-2026-08-23
 
 permissions:
   contents: read
