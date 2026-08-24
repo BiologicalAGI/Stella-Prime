@@ -3,6 +3,8 @@ import unittest
 
 from transparent_instruments import (
     SCHEMA_VERSION,
+    SCALE_MODEL,
+    WEIGHTED_AGGREGATION_MODEL,
     Abacus,
     Alignment,
     Bead,
@@ -62,6 +64,15 @@ class ScaleTests(unittest.TestCase):
             Scale(0, 1, unit=object())
         with self.assertRaises(ValueError):
             Scale(0, 1, label=object())
+
+    def test_scale_declares_linear_min_max_model(self):
+        scale = Scale(0, 100)
+        self.assertEqual(scale.model, SCALE_MODEL)
+        self.assertEqual(scale.model, "LINEAR_MIN_MAX")
+
+    def test_unsupported_scale_model_rejected(self):
+        with self.assertRaises(ValueError):
+            Scale(1, 100, model="LOGARITHMIC")
 
     def test_extreme_finite_scale_normalizes_without_overflow(self):
         scale = Scale(-1e308, 1e308)
@@ -156,6 +167,7 @@ class AbacusTests(unittest.TestCase):
         snapshot = abacus.snapshot()
         self.assertEqual(snapshot["position_selection"], "LAST_APPENDED_PER_DIMENSION")
         self.assertEqual(snapshot["observed_at_ordering"], "NOT_INTERPRETED")
+        self.assertEqual(snapshot["scale_model"], SCALE_MODEL)
         self.assertAlmostEqual(snapshot["last_appended_positions"]["clarity"], 0.4)
 
     def test_duplicate_bead_id_rejected(self):
@@ -178,6 +190,43 @@ class AbacusTests(unittest.TestCase):
             {"clarity": 3.0, "traceability": 1.0}
         )
         self.assertAlmostEqual(result, 0.75)
+
+    def test_weighted_receipt_preserves_inputs_and_model(self):
+        abacus = Abacus([self.clarity, self.traceability])
+        receipt = abacus.explicit_weighted_receipt(
+            {"traceability": 1, "clarity": 3}
+        )
+        self.assertEqual(receipt["schema_version"], SCHEMA_VERSION)
+        self.assertEqual(receipt["aggregation_model"], WEIGHTED_AGGREGATION_MODEL)
+        self.assertEqual(receipt["scale_model"], SCALE_MODEL)
+        self.assertEqual(receipt["position_selection"], "LAST_APPENDED_PER_DIMENSION")
+        self.assertEqual(receipt["dimensions"], ["clarity", "traceability"])
+        self.assertEqual(
+            receipt["bead_ids"],
+            {
+                "clarity": self.clarity.bead_id,
+                "traceability": self.traceability.bead_id,
+            },
+        )
+        self.assertEqual(receipt["weights"], {"clarity": 3.0, "traceability": 1.0})
+        self.assertEqual(receipt["positions"], {"clarity": 0.8, "traceability": 0.6})
+        self.assertAlmostEqual(receipt["value"], 0.75)
+        self.assertEqual(receipt["authority"], "NONE")
+        json.dumps(receipt, allow_nan=False, sort_keys=True)
+
+    def test_weighted_receipt_is_insertion_order_deterministic(self):
+        abacus = Abacus([self.clarity, self.traceability])
+        first = abacus.explicit_weighted_receipt(
+            {"clarity": 3, "traceability": 1}
+        )
+        second = abacus.explicit_weighted_receipt(
+            {"traceability": 1, "clarity": 3}
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(
+            json.dumps(first, allow_nan=False, sort_keys=True),
+            json.dumps(second, allow_nan=False, sort_keys=True),
+        )
 
     def test_extreme_finite_weights_do_not_overflow(self):
         left = Bead(
