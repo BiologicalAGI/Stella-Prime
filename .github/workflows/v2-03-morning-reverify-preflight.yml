@@ -1,0 +1,227 @@
+name: V2-03 Morning Reverify Preflight
+
+on:
+  pull_request:
+    branches:
+      - research/stella-workbench-envelope-v0-1-2026-08-24
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v2-03-morning-reverify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-card:
+    runs-on: windows-latest
+    timeout-minutes: 12
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout PR merge result without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Show environment
+        run: |
+          Write-Host ("PS_VERSION={0}" -f $PSVersionTable.PSVersion)
+          Write-Host ("OS={0}" -f [Environment]::OSVersion.VersionString)
+          Write-Host ("IS_64BIT_OS={0}" -f [Environment]::Is64BitOperatingSystem)
+
+      - name: Verify exact reviewed card identity
+        run: |
+          $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
+          $SourceCommit = '9af9c695fafcd9d336de0ee57ba5c4599f2747da'
+
+          $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'SOURCE_CARD_BLOB_LOOKUP_FAILED' }
+
+          $ActualBlob = (git rev-parse "HEAD:$RepoPath").Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'HEAD_CARD_BLOB_LOOKUP_FAILED' }
+
+          Write-Host ("SOURCE_COMMIT={0}" -f $SourceCommit)
+          Write-Host ("EXPECTED_CARD_BLOB_SHA={0}" -f $ExpectedBlob)
+          Write-Host ("ACTUAL_CARD_BLOB_SHA={0}" -f $ActualBlob)
+
+          if ($ActualBlob -ne $ExpectedBlob) {
+            throw 'CARD_IDENTITY_DRIFT_FROM_REVIEWED_SOURCE_COMMIT'
+          }
+
+          $Status = @(git status --porcelain --untracked-files=all)
+          if ($LASTEXITCODE -ne 0) { throw 'PRE_EXECUTION_GIT_STATUS_FAILED' }
+          if ($Status.Count -gt 0) {
+            $Status | ForEach-Object { Write-Host ("PRE_WORKTREE_ENTRY={0}" -f $_) }
+            throw 'PRE_EXECUTION_WORKTREE_NOT_CLEAN'
+          }
+
+          Write-Host 'CARD_TREE_IDENTITY=PASS'
+          Write-Host 'PRE_EXECUTION_WORKTREE_CLEAN=PASS'
+
+      - name: Parse exact card
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
+          $Tokens = $null
+          $Errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($Card,[ref]$Tokens,[ref]$Errors) | Out-Null
+          if ($Errors.Count -gt 0) {
+            $Errors | ForEach-Object { Write-Error ("PARSE_ERROR|MESSAGE={0}|EXTENT={1}" -f $_.Message,$_.Extent.Text) }
+            throw 'V2_03_MORNING_CARD_PARSE_FAILED'
+          }
+          Write-Host 'PARSE_RESULT=PASS'
+
+      - name: Verify exact reviewed command surface
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
+          $Tokens = $null
+          $Errors = $null
+          $Ast = [System.Management.Automation.Language.Parser]::ParseFile($Card,[ref]$Tokens,[ref]$Errors)
+          if ($Errors.Count -gt 0) { throw 'PARSER_ERRORS_PREVENT_COMMAND_SURFACE_CHECK' }
+
+          $ExpectedCommands = @(
+            'Add-Hold',
+            'Check-ExactFileHash',
+            'Check-HashMatchInRoot',
+            'Get-ChildItem',
+            'Get-Content',
+            'Get-Date',
+            'Get-FileHash',
+            'Get-Item',
+            'Get-Process',
+            'Join-Path',
+            'Section',
+            'Select-String',
+            'Set-StrictMode',
+            'Test-Path',
+            'Where-Object',
+            'Write-Host'
+          ) | Sort-Object -Unique
+
+          $CommandAsts = @($Ast.FindAll({param($Node) $Node -is [System.Management.Automation.Language.CommandAst]},$true))
+          $ActualCommands = [System.Collections.Generic.List[string]]::new()
+          foreach ($CommandAst in $CommandAsts) {
+            $Name = $CommandAst.GetCommandName()
+            if (-not $Name) { throw ("DYNAMIC_OR_UNRESOLVED_COMMAND|EXTENT={0}" -f $CommandAst.Extent.Text) }
+            if (-not $ActualCommands.Contains($Name)) { $ActualCommands.Add($Name) }
+          }
+
+          $ActualSorted = @($ActualCommands | Sort-Object -Unique)
+          Write-Host ('EXPECTED_COMMANDS=' + ($ExpectedCommands -join ','))
+          Write-Host ('ACTUAL_COMMANDS=' + ($ActualSorted -join ','))
+
+          $Difference = @(Compare-Object -ReferenceObject $ExpectedCommands -DifferenceObject $ActualSorted)
+          if ($Difference.Count -gt 0) {
+            $Difference | ForEach-Object { Write-Host ("COMMAND_SURFACE_DIFF|SIDE={0}|COMMAND={1}" -f $_.SideIndicator,$_.InputObject) }
+            throw 'COMMAND_SURFACE_DRIFT'
+          }
+
+          Write-Host 'EXACT_COMMAND_SURFACE=PASS'
+
+      - name: Self-test command-surface rejection logic
+        run: |
+          $Allowed = @(
+            'Add-Hold','Check-ExactFileHash','Check-HashMatchInRoot','Get-ChildItem','Get-Content','Get-Date','Get-FileHash','Get-Item','Get-Process','Join-Path','Section','Select-String','Set-StrictMode','Test-Path','Where-Object','Write-Host'
+          )
+
+          function Test-Rejected([string]$Source) {
+            $Tokens = $null
+            $Errors = $null
+            $Ast = [System.Management.Automation.Language.Parser]::ParseInput($Source,[ref]$Tokens,[ref]$Errors)
+            if ($Errors.Count -gt 0) { return $true }
+            $Commands = @($Ast.FindAll({param($Node) $Node -is [System.Management.Automation.Language.CommandAst]},$true))
+            foreach ($CommandAst in $Commands) {
+              $Name = $CommandAst.GetCommandName()
+              if (-not $Name) { return $true }
+              if ($Allowed -notcontains $Name) { return $true }
+            }
+            return $false
+          }
+
+          $Fixtures = [ordered]@{
+            SET_CONTENT = 'Set-Content x.txt bad'
+            GIT_EXE = 'git.exe status'
+            START_PROCESS = 'Start-Process notepad.exe'
+            DYNAMIC_INVOCATION = '& $dynamicCommand'
+          }
+
+          foreach ($Name in $Fixtures.Keys) {
+            $Rejected = Test-Rejected $Fixtures[$Name]
+            Write-Host ("SCANNER_FIXTURE|NAME={0}|REJECTED={1}" -f $Name,$(if ($Rejected) {'YES'} else {'NO'}))
+            if (-not $Rejected) { throw ("SCANNER_SELF_TEST_FAILED={0}" -f $Name) }
+          }
+
+          if (Test-Rejected 'Write-Host "ok"') { throw 'SCANNER_REJECTED_KNOWN_ALLOWED_COMMAND' }
+          Write-Host 'SCANNER_SELF_TEST=PASS'
+
+      - name: Execute hosted Windows negative fixture
+        run: |
+          $Card = (Resolve-Path 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1').Path
+          $OutputLines = @(& $Card *>&1 | ForEach-Object { $_.ToString() })
+          $OutputLines | ForEach-Object { Write-Host $_ }
+          $Output = $OutputLines -join "`n"
+
+          $RequiredBoundary = @(
+            'MODE=READ_ONLY_V2_03_PRE_MUTATION_REVERIFY',
+            'NETWORK_USE=NO',
+            'DOWNLOAD=NO',
+            'INSTALL=NO',
+            'FILE_MUTATION=NO',
+            'PROCESS_MUTATION=NO',
+            'GIT_MUTATION=NO',
+            'SCOS_MUTATION=NO',
+            'CANONICAL_PROMOTION=NO',
+            'V2_03A_MUTATION_AUTHORIZED_BY_CARD=NO',
+            'SAFE_TO_CLEAR_TERMINAL=YES'
+          )
+          foreach ($Needle in $RequiredBoundary) {
+            if (-not $Output.Contains($Needle)) { throw ("MISSING_REQUIRED_BOUNDARY_OUTPUT={0}" -f $Needle) }
+          }
+
+          $RequiredHostedHolds = @(
+            'HOLD=V0_1_ROOT_MISSING',
+            'HOLD=V0_2_ROOT_MISSING',
+            'HOLD=WORLD_KERNEL_ROOT_MISSING',
+            'HOLD=LUANTI_EXPECTED_EXECUTABLE_HASH_NOT_FOUND'
+          )
+          foreach ($Needle in $RequiredHostedHolds) {
+            if (-not $Output.Contains($Needle)) { throw ("MISSING_EXPECTED_HOSTED_HOLD={0}" -f $Needle) }
+          }
+
+          if (-not $Output.Contains('RESULT=HOLD_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) {
+            throw 'EXPECTED_HOSTED_HOLD_RESULT_NOT_OBSERVED'
+          }
+          if ($Output.Contains('RESULT=PASS_V2_03_MORNING_REVERIFY_EVIDENCE_COLLECTION')) {
+            throw 'NEGATIVE_FIXTURE_UNEXPECTEDLY_RETURNED_PASS'
+          }
+
+          Write-Host 'NEGATIVE_FIXTURE_EXPECTED_HOLD=PASS'
+          Write-Host 'NOTE=Hosted HOLD validates the instrument only; it is not iBUYPOWER currentness evidence.'
+
+      - name: Verify post-execution identity and worktree
+        run: |
+          $RepoPath = 'research/luanti-v0.2/V2_03_MORNING_READ_ONLY_REVERIFY.ps1'
+          $SourceCommit = '9af9c695fafcd9d336de0ee57ba5c4599f2747da'
+          $ExpectedBlob = (git rev-parse "$SourceCommit`:$RepoPath").Trim()
+          $PostBlob = (git rev-parse "HEAD:$RepoPath").Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'POST_CARD_BLOB_LOOKUP_FAILED' }
+          if ($PostBlob -ne $ExpectedBlob) { throw 'CARD_IDENTITY_CHANGED_DURING_EXECUTION' }
+
+          $Status = @(git status --porcelain --untracked-files=all)
+          if ($LASTEXITCODE -ne 0) { throw 'POST_EXECUTION_GIT_STATUS_FAILED' }
+          if ($Status.Count -gt 0) {
+            $Status | ForEach-Object { Write-Host ("POST_WORKTREE_ENTRY={0}" -f $_) }
+            throw 'WORKTREE_CHANGED_DURING_READ_ONLY_VALIDATION'
+          }
+
+          Write-Host ("POST_CARD_BLOB_SHA={0}" -f $PostBlob)
+          Write-Host 'POST_CARD_TREE_IDENTITY=PASS'
+          Write-Host 'POST_WORKTREE_CLEAN=PASS'
+          Write-Host 'VALIDATION_RESULT=PASS_V2_03_MORNING_REVERIFY_HOSTED_PREFLIGHT'
+          Write-Host 'LOCAL_CURRENTNESS_PROVEN=NO'
+          Write-Host 'V2_03A_MUTATION_AUTHORIZED=NO'
+          Write-Host 'CANONICAL_PROMOTION=NO'
