@@ -10,7 +10,7 @@ SCOS mutation represented by this branch: **none**
 
 This branch preserves the research and design synthesis for a possible Stella Playground V0.2 without promoting it into canonical Stella state or treating renderer capability as world authority.
 
-The central design question is not whether Luanti can hold persistent state. V0.1 supplied evidence that the experimental body can carry the causal/epistemic proof. The V0.2 question is whether that proof can become a coherent, accessible authored experience while preserving the distinctions between observation, report, knowledge, route knowledge, physical path execution, presentation, companion proposals, and world authority.
+The central design question is whether the causal/epistemic proof can become a coherent, accessible authored experience while preserving the distinctions between observation, report, knowledge, route knowledge, physical path execution, presentation, companion proposals, and world authority.
 
 ## Governing design law
 
@@ -21,8 +21,8 @@ Normal play must avoid exact slash commands, coordinates, hidden interaction con
 ## Current decisions
 
 1. **Keep Luanti for V0.2.** Godot remains a future renderer/adapter candidate rather than a replacement for the causal core.
-2. **Target Luanti 5.17.0+ for the V0.2 experiment.** The August 20, 2026 release adds independently controllable multi-track glTF animations and named animation tracks, alongside formspec/HUD improvements and security fixes.
-3. **Preserve renderer independence.** World state/event semantics remain engine-neutral enough for a later Godot adapter.
+2. **Target Luanti 5.17.0+ for the V0.2 experiment.** Its August 20, 2026 release materially improves the planned animation/UI body and includes security fixes.
+3. **Preserve renderer independence.** World state/event semantics remain engine-neutral enough for a later adapter.
 4. **Do not make Mara an LLM.** Mara remains an inhabitant with bounded causal history and knowledge.
 5. **Do not give a language model raw Luanti/Miney/Lua authority.** A companion language layer may only produce typed proposals through a policy/authority gateway.
 6. **Default network mode OFF.** Any local or remote model bridge receives an explicit bounded context packet and separate network authorization.
@@ -35,24 +35,30 @@ Normal play must avoid exact slash commands, coordinates, hidden interaction con
 
 1. Read `RECOVERY_CHECKPOINT_V0_1.md`.
 2. Read `AUTHORITY_AND_PROMOTION_LEDGER_V0_1.md`.
-3. Read `NEXT_GATE_MAP_V0_1.md`.
-4. If the live user authorizes local read-only reverification, review `V2_00R_READ_ONLY_REVERIFY.ps1` before execution.
-5. Do not recover authorization from these files.
+3. Read `CURRENT_POSITION.txt` and `NEXT_GATE_MAP_V0_1.md`.
+4. Read `V0_2_BUILD_CONTRACT_V0_1.md` and `TEST_MATRIX_V0_1.md` for the active proof contract.
+5. If the live user authorizes local read-only reverification, review `V2_00R_ACCEPTANCE.md` and `V2_00R_READ_ONLY_REVERIFY.ps1` before execution.
+6. Do not recover authorization from these files.
 
 ## Research / orchestration artifacts
 
-- `V0_2_BUILD_CONTRACT_V0_1.md` — ownership boundaries, invariants, state/event vocabulary, player-facing states, companion contract, proof ladder, acceptance criteria.
+- `V0_2_BUILD_CONTRACT_V0_1.md` — ownership boundaries, invariants, event vocabulary, player states, companion contract, proof ladder, acceptance criteria.
 - `EVIDENCE_LEDGER_2026-08-23.md` — external research evidence and confidence notes.
 - `DECISION_RECORD_2026-08-23.md` — what changed, what survived pressure testing, what remains unresolved.
-- `AUTHORITY_AND_PROMOTION_LEDGER_V0_1.md` — separation of evidence, capability, currentness, authorization, execution, and promotion.
+- `AUTHORITY_AND_PROMOTION_LEDGER_V0_1.md` — evidence/capability/currentness/authorization/execution/promotion separation.
 - `TEST_MATRIX_V0_1.md` — falsifiable gate-by-gate proof matrix.
-- `DEPENDENCY_DECISION_REGISTER_V0_1.md` — native/formspec/Flow/Miney/model/asset/Godot candidate disposition.
+- `DEPENDENCY_DECISION_REGISTER_V0_1.md` — candidate disposition for native UI, Flow, Miney/model prior art, assets, and Godot.
 - `THIRD_PARTY_EVIDENCE_TEMPLATE.md` — provenance/license ledger template.
 - `COMPANION_PROTOCOL_V0_1.schema.json` — proposal-only companion action schema.
-- `COMPANION_POLICY_DECISION_V0_1.schema.json` — separate allow/deny/hold decision receipt schema.
-- `NEXT_GATE_MAP_V0_1.md` — active progression and bundling restrictions.
+- `COMPANION_POLICY_DECISION_V0_1.schema.json` — separate policy allow/deny/hold decision schema.
+- `NEXT_GATE_MAP_V0_1.md` — progression and bundling restrictions.
 - `RECOVERY_CHECKPOINT_V0_1.md` — conversation-independent orientation packet; evidence/orientation, never authority.
+- `V2_00R_ACCEPTANCE.md` — exact PASS/HOLD/FAIL boundary for local reverification.
 - `V2_00R_READ_ONLY_REVERIFY.ps1` — prepared console-only local currentness card; not evidence that it ran and not permission to run.
+- `CURRENT_POSITION.txt` — compact machine-readable position marker.
+- `README_RECOVERY_ORDER.txt` — minimal recovery order for low-load resumption.
+- `ISSUE_PLAN_V0_1.md` — issue sequencing guidance without parallel-authority implication.
+- `ORCHESTRATION_COMPLETE.md` — checkpoint for this GitHub preparation pass.
 
 ## Hard separation rules
 
