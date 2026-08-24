@@ -22,7 +22,10 @@ from typing import Dict, Iterable, Mapping, Optional, Tuple
 def _require_finite_number(value: object, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"{field_name} must be a finite int or float")
-    numeric = float(value)
+    try:
+        numeric = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"{field_name} must be representable as a finite float") from exc
     if not math.isfinite(numeric):
         raise ValueError(f"{field_name} must be finite")
     return numeric
@@ -55,23 +58,50 @@ class Scale:
             raise ValueError("scale maximum must be greater than minimum")
 
     def position(self, value: float) -> float:
-        """Return a normalized position in [0, 1]."""
+        """Return a normalized position in [0, 1] without range-overflow."""
         numeric = _require_finite_number(value, "value")
-        minimum = float(self.minimum)
-        maximum = float(self.maximum)
+        minimum = _require_finite_number(self.minimum, "scale minimum")
+        maximum = _require_finite_number(self.maximum, "scale maximum")
         if numeric < minimum or numeric > maximum:
             raise ValueError(
                 f"value {value!r} is outside declared scale "
                 f"[{self.minimum!r}, {self.maximum!r}]"
             )
-        return (numeric - minimum) / (maximum - minimum)
+
+        # Scaling first avoids overflow in (maximum - minimum), e.g.
+        # [-1e308, +1e308], while preserving relative placement.
+        magnitude = max(abs(minimum), abs(maximum))
+        minimum_scaled = minimum / magnitude
+        maximum_scaled = maximum / magnitude
+        numeric_scaled = numeric / magnitude
+        position = (
+            (numeric_scaled - minimum_scaled)
+            / (maximum_scaled - minimum_scaled)
+        )
+        if not math.isfinite(position):
+            raise ArithmeticError("normalized position became non-finite")
+        # Input bounds were validated above; clamp only floating-point noise.
+        return min(1.0, max(0.0, position))
 
     def value_at(self, position: float) -> float:
-        """Return the raw value at a normalized position in [0, 1]."""
+        """Return the raw value at a normalized position in [0, 1].
+
+        Uses a convex combination rather than minimum + p*(maximum-minimum)
+        so opposite-sign finite endpoints cannot overflow during subtraction.
+        """
         normalized = _require_finite_number(position, "position")
         if normalized < 0.0 or normalized > 1.0:
             raise ValueError("position must be within [0, 1]")
-        return float(self.minimum) + normalized * (float(self.maximum) - float(self.minimum))
+        minimum = _require_finite_number(self.minimum, "scale minimum")
+        maximum = _require_finite_number(self.maximum, "scale maximum")
+        if normalized == 0.0:
+            return minimum
+        if normalized == 1.0:
+            return maximum
+        value = (1.0 - normalized) * minimum + normalized * maximum
+        if not math.isfinite(value):
+            raise ArithmeticError("scale interpolation became non-finite")
+        return value
 
 
 @dataclass(frozen=True)
@@ -90,7 +120,6 @@ class Bead:
     def __post_init__(self) -> None:
         for field_name in ("bead_id", "dimension", "basis", "source", "observed_at"):
             _require_nonempty_text(getattr(self, field_name), field_name)
-        # Validate at construction so invalid observations cannot enter an Abacus.
         self.scale.position(self.value)
 
     @property
@@ -153,8 +182,7 @@ class Abacus:
         if not weights:
             raise ValueError("weights are required; no implicit weighting is allowed")
 
-        numerator = 0.0
-        denominator = 0.0
+        resolved: list[tuple[float, float]] = []
         missing: list[str] = []
 
         for dimension, weight in weights.items():
@@ -166,15 +194,25 @@ class Abacus:
             if bead is None:
                 missing.append(dimension)
                 continue
-            numerator += bead.position * numeric_weight
-            denominator += numeric_weight
+            resolved.append((bead.position, numeric_weight))
 
         if missing:
             raise ValueError("missing dimensions: " + ", ".join(sorted(missing)))
-        if denominator <= 0:
+
+        maximum_weight = max(weight for _, weight in resolved)
+        if maximum_weight <= 0:
             raise ValueError("sum of weights must be positive")
 
-        return numerator / denominator
+        scaled = [
+            (position, weight / maximum_weight)
+            for position, weight in resolved
+        ]
+        denominator = math.fsum(weight for _, weight in scaled)
+        numerator = math.fsum(position * weight for position, weight in scaled)
+        result = numerator / denominator
+        if not math.isfinite(result):
+            raise ArithmeticError("weighted position became non-finite")
+        return min(1.0, max(0.0, result))
 
     def snapshot(self) -> Dict[str, object]:
         return {
