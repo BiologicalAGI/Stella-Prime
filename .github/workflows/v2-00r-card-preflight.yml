@@ -37,28 +37,13 @@ jobs:
 
       - name: Verify exact reviewed V2-00R card identity
         run: |
-          $Card = (Resolve-Path 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1').Path
+          $RepoPath = 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1'
           $ExpectedBlob = '0a131c4da35cc57b2fe147aa65f33fe253df0f16'
 
-          function Get-GitBlobSha1([string]$Path) {
-            $Bytes = [IO.File]::ReadAllBytes($Path)
-            $Prefix = [Text.Encoding]::ASCII.GetBytes("blob $($Bytes.Length)`0")
-            $Combined = New-Object byte[] ($Prefix.Length + $Bytes.Length)
-            [Array]::Copy($Prefix, 0, $Combined, 0, $Prefix.Length)
-            [Array]::Copy($Bytes, 0, $Combined, $Prefix.Length, $Bytes.Length)
-
-            $Sha1 = [Security.Cryptography.SHA1]::Create()
-            try {
-              $Hash = $Sha1.ComputeHash($Combined)
-            }
-            finally {
-              $Sha1.Dispose()
-            }
-
-            return (($Hash | ForEach-Object { $_.ToString('x2') }) -join '')
+          $ActualBlob = (git rev-parse "HEAD:$RepoPath").Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw 'GIT_TREE_BLOB_LOOKUP_FAILED'
           }
-
-          $ActualBlob = Get-GitBlobSha1 $Card
 
           Write-Host ("EXPECTED_CARD_BLOB_SHA={0}" -f $ExpectedBlob)
           Write-Host ("ACTUAL_CARD_BLOB_SHA={0}" -f $ActualBlob)
@@ -67,7 +52,21 @@ jobs:
             throw ("CARD_IDENTITY_DRIFT expected={0} actual={1}" -f $ExpectedBlob, $ActualBlob)
           }
 
-          Write-Host 'CARD_IDENTITY=PASS'
+          $PreStatus = @(git status --porcelain --untracked-files=all)
+          if ($LASTEXITCODE -ne 0) {
+            throw 'PRE_EXECUTION_GIT_STATUS_FAILED'
+          }
+
+          $PreStatus | ForEach-Object {
+            Write-Host ("PRE_WORKTREE_ENTRY={0}" -f $_)
+          }
+
+          if ($PreStatus.Count -gt 0) {
+            throw 'PRE_EXECUTION_WORKTREE_NOT_CLEAN'
+          }
+
+          Write-Host 'CARD_TREE_IDENTITY=PASS'
+          Write-Host 'PRE_EXECUTION_WORKTREE_CLEAN=PASS'
 
       - name: Parse exact V2-00R card
         run: |
@@ -324,42 +323,34 @@ jobs:
 
       - name: Verify post-execution integrity and clean worktree
         run: |
-          $Card = (Resolve-Path 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1').Path
+          $RepoPath = 'research/luanti-v0.2/V2_00R_READ_ONLY_REVERIFY.ps1'
           $ExpectedBlob = '0a131c4da35cc57b2fe147aa65f33fe253df0f16'
 
-          function Get-GitBlobSha1([string]$Path) {
-            $Bytes = [IO.File]::ReadAllBytes($Path)
-            $Prefix = [Text.Encoding]::ASCII.GetBytes("blob $($Bytes.Length)`0")
-            $Combined = New-Object byte[] ($Prefix.Length + $Bytes.Length)
-            [Array]::Copy($Prefix, 0, $Combined, 0, $Prefix.Length)
-            [Array]::Copy($Bytes, 0, $Combined, $Prefix.Length, $Bytes.Length)
-
-            $Sha1 = [Security.Cryptography.SHA1]::Create()
-            try {
-              $Hash = $Sha1.ComputeHash($Combined)
-            }
-            finally {
-              $Sha1.Dispose()
-            }
-
-            return (($Hash | ForEach-Object { $_.ToString('x2') }) -join '')
+          $PostBlob = (git rev-parse "HEAD:$RepoPath").Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw 'POST_EXECUTION_GIT_TREE_BLOB_LOOKUP_FAILED'
           }
 
-          $PostBlob = Get-GitBlobSha1 $Card
           Write-Host ("POST_CARD_BLOB_SHA={0}" -f $PostBlob)
 
           if ($PostBlob -ne $ExpectedBlob) {
-            throw 'CARD_IDENTITY_CHANGED_DURING_EXECUTION'
+            throw 'CARD_TREE_IDENTITY_CHANGED_DURING_EXECUTION'
           }
 
           $Status = @(git status --porcelain --untracked-files=all)
-          $Status | ForEach-Object { Write-Host ("WORKTREE_ENTRY={0}" -f $_) }
+          if ($LASTEXITCODE -ne 0) {
+            throw 'POST_EXECUTION_GIT_STATUS_FAILED'
+          }
+
+          $Status | ForEach-Object {
+            Write-Host ("WORKTREE_ENTRY={0}" -f $_)
+          }
 
           if ($Status.Count -gt 0) {
             throw 'WORKTREE_CHANGED_DURING_READ_ONLY_VALIDATION'
           }
 
-          Write-Host 'POST_CARD_IDENTITY=PASS'
+          Write-Host 'POST_CARD_TREE_IDENTITY=PASS'
           Write-Host 'POST_WORKTREE_CLEAN=PASS'
           Write-Host 'VALIDATION_RESULT=PASS_V2_00R_HOSTED_PREFLIGHT_HARDENED'
           Write-Host 'LOCAL_AUTHORITY_GRANTED=NO'
