@@ -1,10 +1,12 @@
 """Deterministic randomized invariant checks for Transparent Instruments V0.1."""
+from decimal import Decimal, getcontext
 import math
 import random
 
 from transparent_instruments import Abacus, Bead, Scale, SlideRuler
 
 SEED = 20260823
+getcontext().prec = 120
 
 
 def _random_finite_float() -> float:
@@ -19,10 +21,17 @@ def _random_finite_float() -> float:
     return value
 
 
+def _exact_relative_position(lo: float, hi: float, value: float) -> float:
+    numerator = Decimal.from_float(value) - Decimal.from_float(lo)
+    denominator = Decimal.from_float(hi) - Decimal.from_float(lo)
+    return float(numerator / denominator)
+
+
 def main() -> None:
     random.seed(SEED)
     roundtrip_checks = 0
     extreme_scale_checks = 0
+    narrow_scale_checks = 0
     projection_checks = 0
     weighted_checks = 0
     alignment_checks = 0
@@ -75,6 +84,40 @@ def main() -> None:
             raise AssertionError("extreme normalized position escaped [0, 1]")
         extreme_scale_checks += 1
 
+    for _ in range(10_000):
+        base = _random_finite_float()
+        if base == 0.0:
+            base = math.nextafter(0.0, math.inf)
+
+        direction = math.inf if random.random() < 0.5 else -math.inf
+        points = [base]
+        current = base
+        step_count = random.randint(2, 100)
+        for _step in range(step_count):
+            next_value = math.nextafter(current, direction)
+            if not math.isfinite(next_value) or next_value == current:
+                break
+            points.append(next_value)
+            current = next_value
+
+        if len(points) < 3:
+            continue
+        points.sort()
+        lo = points[0]
+        hi = points[-1]
+        value = points[random.randint(1, len(points) - 2)]
+
+        scale = Scale(lo, hi)
+        observed = scale.position(value)
+        expected = _exact_relative_position(lo, hi, value)
+        if not math.isclose(observed, expected, rel_tol=1e-14, abs_tol=1e-14):
+            raise AssertionError(
+                "narrow scale relative position lost precision: "
+                f"lo={lo!r} hi={hi!r} value={value!r} "
+                f"observed={observed!r} expected={expected!r}"
+            )
+        narrow_scale_checks += 1
+
     for _ in range(5_000):
         lo_from = random.uniform(-1e6, 1e6)
         hi_from = lo_from + random.uniform(1e-3, 1e6)
@@ -115,14 +158,20 @@ def main() -> None:
                     observed_at=f"run-{run_index}.{dimension_index}",
                 )
             )
-            # Exercise a wide finite dynamic range without allowing infinity.
             weights[dimension] = 10.0 ** random.uniform(-300, 308)
 
-        result = abacus.explicit_weighted_position(weights)
+        receipt = abacus.explicit_weighted_receipt(weights)
+        result = receipt["value"]
         if not 0.0 <= result <= 1.0:
             raise AssertionError("weighted position escaped [0, 1]")
         if not math.isfinite(result):
             raise AssertionError("weighted position became non-finite")
+        for dimension in receipt["dimensions"]:
+            bead_receipt = receipt["selected_beads"][dimension]
+            if bead_receipt["bead_id"] != receipt["bead_ids"][dimension]:
+                raise AssertionError("weighted receipt bead identity diverged")
+            if bead_receipt["position"] != receipt["positions"][dimension]:
+                raise AssertionError("weighted receipt position diverged")
         weighted_checks += 1
 
     for run_index in range(5_000):
@@ -169,6 +218,7 @@ def main() -> None:
     total = (
         roundtrip_checks
         + extreme_scale_checks
+        + narrow_scale_checks
         + projection_checks
         + weighted_checks
         + alignment_checks
@@ -176,6 +226,7 @@ def main() -> None:
     print(f"SEED={SEED}")
     print(f"ROUNDTRIP_CHECKS={roundtrip_checks}")
     print(f"EXTREME_SCALE_CHECKS={extreme_scale_checks}")
+    print(f"NARROW_SCALE_CHECKS={narrow_scale_checks}")
     print(f"PROJECTION_CHECKS={projection_checks}")
     print(f"WEIGHTED_CHECKS={weighted_checks}")
     print(f"ALIGNMENT_CHECKS={alignment_checks}")
