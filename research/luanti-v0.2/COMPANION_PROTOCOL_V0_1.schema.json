@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "stella://schemas/companion-protocol-v0.1",
+  "title": "Stella Companion Proposal V0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proposal_id",
+    "actor_ref",
+    "intent",
+    "authority",
+    "basis_refs",
+    "requested_executor"
+  ],
+  "properties": {
+    "proposal_id": {
+      "type": "string",
+      "pattern": "^proposal\\.[A-Za-z0-9._-]+$"
+    },
+    "actor_ref": {
+      "type": "string",
+      "pattern": "^actor\\.companion\\.[A-Za-z0-9._-]+$"
+    },
+    "intent": {
+      "type": "string",
+      "enum": [
+        "observe",
+        "follow_player",
+        "wait",
+        "come_here",
+        "point_to_target",
+        "lead_player"
+      ]
+    },
+    "target_actor_ref": {
+      "type": ["string", "null"]
+    },
+    "target_place_ref": {
+      "type": ["string", "null"]
+    },
+    "basis_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "authority": {
+      "const": "PROPOSAL_ONLY"
+    },
+    "requested_executor": {
+      "type": "string",
+      "enum": ["none", "orient", "follow", "wait", "navigate"]
+    },
+    "context_packet_ref": {
+      "type": ["string", "null"]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"intent": {"const": "lead_player"}},
+        "required": ["intent"]
+      },
+      "then": {
+        "required": ["target_place_ref"]
+      }
+    }
+  ]
+}
