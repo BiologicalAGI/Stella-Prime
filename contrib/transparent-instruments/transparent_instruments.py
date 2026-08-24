@@ -107,7 +107,7 @@ class Abacus:
     """Append-only in-memory board of observations.
 
     The Abacus does not infer intent, make decisions, grant authorization,
-    or silently choose weights.
+    silently choose weights, or infer temporal currentness from observed_at.
     """
 
     def __init__(self, beads: Optional[Iterable[Bead]] = None) -> None:
@@ -125,21 +125,26 @@ class Abacus:
     def beads(self) -> Tuple[Bead, ...]:
         return tuple(self._beads)
 
-    def latest(self, dimension: str) -> Optional[Bead]:
+    def last_appended(self, dimension: str) -> Optional[Bead]:
+        """Return the most recently appended bead for a dimension.
+
+        This is append-order semantics only. ``observed_at`` is preserved as
+        provenance text and is not parsed, compared, or used to infer currentness.
+        """
         for bead in reversed(self._beads):
             if bead.dimension == dimension:
                 return bead
         return None
 
-    def positions(self) -> Dict[str, float]:
-        """Return latest normalized position for every represented dimension."""
+    def last_appended_positions(self) -> Dict[str, float]:
+        """Return each dimension's last-appended normalized position."""
         result: Dict[str, float] = {}
         for bead in self._beads:
             result[bead.dimension] = bead.position
         return result
 
     def explicit_weighted_position(self, weights: Mapping[str, float]) -> float:
-        """Combine latest positions only when caller declares every weight.
+        """Combine last-appended positions only when caller declares every weight.
 
         This method is intentionally explicit. There is no default weighting.
         Missing dimensions, negative weights, and a zero total weight are errors.
@@ -157,7 +162,7 @@ class Abacus:
             numeric_weight = _require_finite_number(weight, f"weight for {dimension}")
             if numeric_weight < 0:
                 raise ValueError("weights must be non-negative")
-            bead = self.latest(dimension)
+            bead = self.last_appended(dimension)
             if bead is None:
                 missing.append(dimension)
                 continue
@@ -176,7 +181,9 @@ class Abacus:
             "instrument": "abacus",
             "bead_count": len(self._beads),
             "beads": [bead.to_dict() for bead in self._beads],
-            "latest_positions": self.positions(),
+            "last_appended_positions": self.last_appended_positions(),
+            "position_selection": "LAST_APPENDED_PER_DIMENSION",
+            "observed_at_ordering": "NOT_INTERPRETED",
             "authority": "NONE",
         }
 
