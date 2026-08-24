@@ -68,6 +68,7 @@ No external packages are required.
 ```bash
 cd contrib/transparent-instruments
 python -m unittest -v test_transparent_instruments.py
+python randomized_invariants.py
 python example.py
 ```
 
@@ -82,7 +83,7 @@ UNIT_TESTS=12
 PASS=12
 ```
 
-A recursive failure-seeking review then found a non-finite-number edge case, corrected it, expanded validation, and established the current baseline:
+A recursive failure-seeking review then found a non-finite-number edge case, corrected it, expanded validation, and established the current unit-test baseline:
 
 ```text
 UNIT_TESTS=18
@@ -91,7 +92,21 @@ FAIL=0
 ERROR=0
 ```
 
-This proves only that the current reference implementation behaves as specified by those tests in that environment. It does **not** prove:
+A fixed-seed randomized invariant run then exercised the hardened implementation:
+
+```text
+SEED=20260823
+ROUNDTRIP_CHECKS=10000
+PROJECTION_CHECKS=5000
+WEIGHTED_CHECKS=5000
+ALIGNMENT_CHECKS=5000
+TOTAL_RANDOMIZED_INVARIANT_CHECKS=25000
+RESULT=PASS
+```
+
+The randomized driver is committed as `randomized_invariants.py` so the result can be independently reproduced.
+
+This evidence proves only bounded implementation behavior in the recorded environment. It does **not** prove:
 
 - Windows compatibility;
 - statistical validity of a chosen dimension;
@@ -132,6 +147,7 @@ This reference takes the opposite approach. The numeric mechanics are intentiona
 
 - `transparent_instruments.py` — dependency-free reference implementation.
 - `test_transparent_instruments.py` — executable unit tests.
+- `randomized_invariants.py` — fixed-seed randomized invariant checks.
 - `example.py` — minimal usage example.
 - `EMPIRICAL_STATUS.md` — proof boundary, defect history, and current validation record.
 - `LICENSE_STATUS.md` — licensing hold for this public draft.
