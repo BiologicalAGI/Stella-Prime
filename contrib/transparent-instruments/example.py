@@ -29,9 +29,11 @@ abacus.add(
 
 print(abacus.snapshot())
 
-# Explicit weighting is allowed only when the caller supplies it.
+# Explicit weighting is allowed only when the caller supplies it. The result is
+# a normalized compensatory weighted position in [0, 1], not a raw-scale value
+# and not authority.
 print(
-    "weighted position:",
+    "normalized weighted position:",
     abacus.explicit_weighted_position({"clarity": 1, "traceability": 1}),
 )
 
