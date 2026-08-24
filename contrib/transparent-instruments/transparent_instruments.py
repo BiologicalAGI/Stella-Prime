@@ -248,7 +248,11 @@ class Abacus:
 
 @dataclass(frozen=True)
 class Alignment:
-    """Reproducible relative placement of two declared observations."""
+    """Reproducible relative placement of two declared observations.
+
+    Positions and delta are derived properties. Callers cannot supply them as
+    independent fields that disagree with the declared values/scales.
+    """
 
     left_bead_id: str
     right_bead_id: str
@@ -258,37 +262,119 @@ class Alignment:
     right_value: float
     left_scale: Scale
     right_scale: Scale
-    left_position: float
-    right_position: float
-    position_delta: float
     relation: str
     justification: str
-    semantic_equivalence_established: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "left_bead_id",
+            "right_bead_id",
+            "left_dimension",
+            "right_dimension",
+            "relation",
+            "justification",
+        ):
+            _require_nonempty_text(getattr(self, field_name), field_name)
+        if not isinstance(self.left_scale, Scale) or not isinstance(
+            self.right_scale, Scale
+        ):
+            raise ValueError("alignment scales must be Scale instances")
+        left_value = _require_finite_number(self.left_value, "left value")
+        right_value = _require_finite_number(self.right_value, "right value")
+        self.left_scale.position(left_value)
+        self.right_scale.position(right_value)
+        object.__setattr__(self, "left_value", left_value)
+        object.__setattr__(self, "right_value", right_value)
+
+    @property
+    def left_position(self) -> float:
+        return self.left_scale.position(self.left_value)
+
+    @property
+    def right_position(self) -> float:
+        return self.right_scale.position(self.right_value)
+
+    @property
+    def position_delta(self) -> float:
+        return self.left_position - self.right_position
+
+    @property
+    def semantic_equivalence_established(self) -> bool:
+        return False
 
     def to_dict(self) -> Dict[str, object]:
-        data = asdict(self)
-        data["schema_version"] = SCHEMA_VERSION
-        return data
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "left_bead_id": self.left_bead_id,
+            "right_bead_id": self.right_bead_id,
+            "left_dimension": self.left_dimension,
+            "right_dimension": self.right_dimension,
+            "left_value": self.left_value,
+            "right_value": self.right_value,
+            "left_scale": asdict(self.left_scale),
+            "right_scale": asdict(self.right_scale),
+            "left_position": self.left_position,
+            "right_position": self.right_position,
+            "position_delta": self.position_delta,
+            "relation": self.relation,
+            "justification": self.justification,
+            "semantic_equivalence_established": False,
+        }
 
 
 @dataclass(frozen=True)
 class Projection:
-    """Reproducible same-position projection from one scale to another."""
+    """Reproducible same-position projection from one scale to another.
+
+    Position, projected value, and non-claim flags are derived properties.
+    """
 
     source_value: float
-    source_position: float
-    projected_value: float
     from_scale: Scale
     to_scale: Scale
     relation: str
     justification: str
-    semantic_equivalence_established: bool = False
-    predictive_claim: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.from_scale, Scale) or not isinstance(
+            self.to_scale, Scale
+        ):
+            raise ValueError("projection scales must be Scale instances")
+        _require_nonempty_text(self.relation, "relation")
+        _require_nonempty_text(self.justification, "justification")
+        source_value = _require_finite_number(self.source_value, "source value")
+        self.from_scale.position(source_value)
+        object.__setattr__(self, "source_value", source_value)
+
+    @property
+    def source_position(self) -> float:
+        return self.from_scale.position(self.source_value)
+
+    @property
+    def projected_value(self) -> float:
+        return self.to_scale.value_at(self.source_position)
+
+    @property
+    def semantic_equivalence_established(self) -> bool:
+        return False
+
+    @property
+    def predictive_claim(self) -> bool:
+        return False
 
     def to_dict(self) -> Dict[str, object]:
-        data = asdict(self)
-        data["schema_version"] = SCHEMA_VERSION
-        return data
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "source_value": self.source_value,
+            "source_position": self.source_position,
+            "projected_value": self.projected_value,
+            "from_scale": asdict(self.from_scale),
+            "to_scale": asdict(self.to_scale),
+            "relation": self.relation,
+            "justification": self.justification,
+            "semantic_equivalence_established": False,
+            "predictive_claim": False,
+        }
 
 
 class SlideRuler:
@@ -307,8 +393,6 @@ class SlideRuler:
         _require_nonempty_text(relation, "relation")
         _require_nonempty_text(justification, "justification")
 
-        left_position = left.position
-        right_position = right.position
         return Alignment(
             left_bead_id=left.bead_id,
             right_bead_id=right.bead_id,
@@ -318,9 +402,6 @@ class SlideRuler:
             right_value=right.value,
             left_scale=left.scale,
             right_scale=right.scale,
-            left_position=left_position,
-            right_position=right_position,
-            position_delta=left_position - right_position,
             relation=relation,
             justification=justification,
         )
@@ -340,11 +421,8 @@ class SlideRuler:
         _require_nonempty_text(justification, "justification")
 
         source_value = _require_finite_number(value, "value")
-        position = from_scale.position(source_value)
         return Projection(
             source_value=source_value,
-            source_position=position,
-            projected_value=to_scale.value_at(position),
             from_scale=from_scale,
             to_scale=to_scale,
             relation=relation,
