@@ -5,7 +5,7 @@ Status: **PUBLIC DRAFT / REFERENCE IMPLEMENTATION / NON-AUTHORITATIVE**
 This small toolkit explores two deliberately transparent reasoning instruments:
 
 - **Abacus** — an append-only board of provenance-carrying observations across named dimensions.
-- **Slide Ruler** — a continuous-scale alignment/comparison instrument that exposes its relation and justification instead of silently asserting that unlike scales are equivalent.
+- **Slide Ruler** — a continuous-scale alignment/comparison instrument whose receipts expose the declared scales, values, relation, and justification needed to reproduce the numeric result.
 
 The goal is not to create another autonomous decision engine. The goal is to make measurement, normalization, weighting, comparison, provenance, and ordering assumptions inspectable enough that a human or larger system can see exactly what was done.
 
@@ -20,6 +20,8 @@ PROJECTION != PREDICTION
 CAPABILITY != PERMISSION
 OBSERVED THEN != TRUE NOW
 APPEND ORDER != OBSERVED-TIME CURRENTNESS
+FINITE INPUT != SAFE INTERMEDIATE ARITHMETIC
+SERIALIZED RECEIPT != TRUSTED CLAIM
 ```
 
 ## Lineage
@@ -32,42 +34,61 @@ APPEND ORDER != OBSERVED-TIME CURRENTNESS
 
 A `Bead` contains:
 
-- stable `bead_id`
-- named `dimension`
-- raw numeric `value`
-- explicitly declared `Scale`
-- `basis`
-- `source`
-- `observed_at`
-- optional note
+- stable `bead_id`;
+- named `dimension`;
+- finite numeric `value`;
+- explicitly declared `Scale`;
+- `basis`;
+- `source`;
+- `observed_at` provenance text;
+- optional text note.
 
-The Abacus is append-only in memory. It can report the **last-appended** position for each dimension and can calculate an explicitly weighted summary **only when the caller supplies the weights**. There is no implicit weighting and no authority decision attached to the resulting number.
+The Abacus reports the **last-appended** position for each dimension and computes an explicitly weighted summary only when the caller supplies the weights. There is no implicit weighting and no authority decision attached to the resulting number.
 
-`observed_at` is preserved as provenance text only. V0.1 does not parse timestamps, sort observations by timestamp, or infer temporal currentness. A backfilled older observation appended later is therefore the last-appended observation, not evidence that it is newest in observed time. Snapshots declare this explicitly:
+`observed_at` is not parsed or sorted in V0.1. Snapshots therefore declare:
 
 ```text
 position_selection = LAST_APPENDED_PER_DIMENSION
 observed_at_ordering = NOT_INTERPRETED
 ```
 
-Non-finite numbers (`NaN`, positive/negative infinity) and booleans-as-numbers are rejected rather than allowed to silently contaminate normalized or weighted results.
+The implementation also rejects NaN/infinity, booleans-as-numbers, and integer values that cannot be represented exactly as the float arithmetic used by this reference.
 
 ## Slide Ruler
 
 The Slide Ruler can:
 
-1. align two observations by their normalized positions on their own declared scales;
-2. report the positional difference;
-3. project one normalized position onto another declared numeric scale when the caller supplies a named relation and justification.
+1. align two observations by relative position on their declared scales;
+2. report the positional delta;
+3. project one normalized position onto another declared scale when a relation and justification are supplied.
 
-A projection explicitly reports:
+Alignment and Projection receipts include their scale definitions and raw values so the numeric result can be recomputed from the receipt itself.
+
+Derived values are not caller-controlled receipt fields. In particular:
 
 ```text
 semantic_equivalence_established = false
 predictive_claim = false
 ```
 
-The math may be valid while the semantics are invalid. The tool refuses to hide that distinction.
+are derived non-claims. A caller cannot inject a different projected value/delta/claim through the normal dataclass constructor.
+
+Every serialized record uses:
+
+```text
+schema_version = transparent-instruments/0.1
+```
+
+## Numeric hardening
+
+Finite endpoints do not guarantee safe intermediate subtraction. For example, `(+1e308) - (-1e308)` overflows despite both endpoints being finite.
+
+V0.1 therefore:
+
+- normalizes after scaling values/endpoints by a common magnitude;
+- interpolates with a convex combination instead of subtracting the full range;
+- rescales explicit weights before `math.fsum` aggregation;
+- tests extreme finite values across the representable exponent range.
 
 ## Quick start
 
@@ -82,54 +103,45 @@ python example.py
 
 ## Empirical status
 
-Validated on 2026-08-23 in a Python **3.13.5**, Linux x86_64 sandbox.
-
-Initial pass:
+Current validation on 2026-08-23 in Python **3.13.5**, Linux x86_64:
 
 ```text
-UNIT_TESTS=12
-PASS=12
-```
-
-A recursive failure-seeking review then found a non-finite-number edge case, corrected it, and expanded validation to 18 tests.
-
-A later semantic review found that the API name `latest` could be misread as observed-time currentness even though the implementation used append order. That ambiguity was removed: the API now says `last_appended`, snapshots declare the ordering contract, and a backfill regression was added.
-
-Current unit-test baseline:
-
-```text
-UNIT_TESTS=19
-PASS=19
+UNIT_TESTS=34
+PASS=34
 FAIL=0
 ERROR=0
-```
 
-A fixed-seed randomized invariant run then exercised the corrected implementation:
-
-```text
 SEED=20260823
 ROUNDTRIP_CHECKS=10000
+EXTREME_SCALE_CHECKS=10000
 PROJECTION_CHECKS=5000
 WEIGHTED_CHECKS=5000
 ALIGNMENT_CHECKS=5000
-TOTAL_RANDOMIZED_INVARIANT_CHECKS=25000
+TOTAL_RANDOMIZED_INVARIANT_CHECKS=35000
 RESULT=PASS
 ```
 
-The randomized driver is committed as `randomized_invariants.py` so the result can be independently reproduced.
+The failure history is intentionally preserved. Earlier green states were superseded after review found:
 
-This evidence proves only bounded implementation behavior in the recorded environment. It does **not** prove:
+1. non-finite numeric contamination;
+2. append-order/currentness ambiguity;
+3. extreme finite intermediate overflow and weight-sum overflow;
+4. forgeable/incomplete standalone receipt fields.
+
+An independent GitHub Copilot code review also identified canonical numeric storage and an avoidable repeated bead scan; both were corrected. Copilot's review is advisory and does not count as merge authority.
+
+This evidence proves bounded implementation behavior only. It does **not** prove:
 
 - Windows compatibility;
-- statistical validity of a chosen dimension;
-- correctness of human-supplied evidence;
-- temporal currentness of an `observed_at` value;
+- scientific/statistical validity of a chosen dimension;
+- correctness of supplied evidence;
+- temporal currentness;
 - semantic comparability of two scales;
 - predictive power;
-- safety of decisions made by a larger system;
+- safety of a larger embedding system;
 - authorization to act.
 
-See `EMPIRICAL_STATUS.md` for the defect history, exact proof boundary, and next failure-seeking tests.
+See `EMPIRICAL_STATUS.md` for the exact defect history, Git blob identities, proof boundary, and remaining failure-seeking work.
 
 ## Why this exists
 
@@ -144,18 +156,18 @@ observation
 = one number that looks objective
 ```
 
-This reference takes the opposite approach. The numeric mechanics are intentionally small; provenance and non-equivalence rules are first-class.
+This reference takes the opposite approach. The numeric mechanics are intentionally small; provenance, reproducibility, and non-equivalence rules are first-class.
 
 ## What this is not
 
-- not an LLM
-- not a confidence oracle
-- not a safety classifier
-- not a permission system
-- not a temporal ordering/currentness engine
-- not a statistical package
-- not a substitute for domain validation
-- not a claim that historical Abacus experiments are proven
+- not an LLM;
+- not a confidence oracle;
+- not a safety classifier;
+- not a permission system;
+- not a temporal currentness engine;
+- not a statistical package;
+- not a substitute for domain validation;
+- not a claim that historical Abacus experiments are proven.
 
 ## Files
 
@@ -163,11 +175,11 @@ This reference takes the opposite approach. The numeric mechanics are intentiona
 - `test_transparent_instruments.py` — executable unit tests.
 - `randomized_invariants.py` — fixed-seed randomized invariant checks.
 - `example.py` — minimal usage example.
-- `EMPIRICAL_STATUS.md` — proof boundary, defect history, and current validation record.
+- `EMPIRICAL_STATUS.md` — proof boundary, defect history, and validation receipts.
 - `LICENSE_STATUS.md` — licensing hold for this public draft.
 
 ## Contribution posture
 
-This code is being made publicly inspectable before any claim of maturity. Findings, counterexamples, simpler formulations, and tests that break an assumption are more useful than praise.
+This code is publicly inspectable before any claim of maturity. Counterexamples and tests that break an assumption are more useful than praise.
 
 A future version should stay small unless empirical use demonstrates that additional machinery is necessary.
