@@ -25,7 +25,7 @@ jobs:
       - name: Checkout PR merge result without persisted credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.event.pull_request.head.sha }}
           persist-credentials: false
           fetch-depth: 1
 
