@@ -16,6 +16,8 @@ jobs:
   validate-card:
     runs-on: windows-latest
     timeout-minutes: 10
+    env:
+      MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
 
     defaults:
       run:
@@ -24,14 +26,14 @@ jobs:
     steps:
       - name: Require pull request merge commit SHA
         run: |
-          if (-not '${{ github.event.pull_request.merge_commit_sha }}') {
+          if ([string]::IsNullOrWhiteSpace($env:MERGE_COMMIT_SHA)) {
             throw 'PULL_REQUEST_MERGE_COMMIT_SHA_UNAVAILABLE'
           }
 
       - name: Checkout PR merge result without persisted credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ env.MERGE_COMMIT_SHA }}
           persist-credentials: false
           fetch-depth: 1
 
